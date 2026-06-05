@@ -328,37 +328,48 @@ async function fetchCoinRecords() {
 }
 
 async function handleCheckin() {
-  showCheckinPopup.value = true;
-  if (todayCheckedIn.value) return;
+  if (todayCheckedIn.value) {
+    showCheckinPopup.value = true;
+    return;
+  }
   try {
     const result = await checkin();
     if (result.alreadyCheckedIn) {
-      showToast('今日已签到');
+      showToast({ message: '今日已签到', position: 'top' });
     } else {
-      showToast(`签到成功，获得${result.amount}漂流币`);
+      showToast({ message: `签到成功，获得${result.amount}漂流币`, position: 'top' });
     }
     await fetchCheckinStatus();
     await fetchWelfareInfo();
+    setTimeout(() => {
+      showCheckinPopup.value = true;
+    }, 1500);
   } catch (error) {
+    if (error.isBusinessError) {
+      showToast({ message: error.businessMessage, position: 'top' });
+    }
     console.error('签到失败:', error);
   }
 }
 
 async function handleClaimGift(gift) {
   if (gift.claimed) {
-    showToast('该礼包已领取');
+    showToast({ message: '该礼包已领取', position: 'top' });
     return;
   }
   if (!gift.canClaim) {
-    showToast(`本月签到不足${gift.days}天`);
+    showToast({ message: `本月签到不足${gift.days}天`, position: 'top' });
     return;
   }
   try {
     const result = await claimGift(gift.days);
-    showToast(`🎉 获得${result.amount}漂流币`);
+    showToast({ message: `🎉 获得${result.amount}漂流币`, position: 'top', duration: 2000 });
     await fetchCheckinStatus();
     await fetchWelfareInfo();
   } catch (error) {
+    if (error.isBusinessError) {
+      showToast({ message: error.businessMessage, position: 'top' });
+    }
     console.error('领取礼包失败:', error);
   }
 }
@@ -368,10 +379,13 @@ async function handleClaimTask(task) {
   if (!task.completed) return;
   try {
     const result = await claimTask(task.key);
-    showToast(`🎉 获得${result.amount}漂流币`);
+    showToast({ message: `🎉 获得${result.amount}漂流币`, position: 'top', duration: 2000 });
     await fetchTasks();
     await fetchWelfareInfo();
   } catch (error) {
+    if (error.isBusinessError) {
+      showToast({ message: error.businessMessage, position: 'top' });
+    }
     console.error('领取任务奖励失败:', error);
   }
 }

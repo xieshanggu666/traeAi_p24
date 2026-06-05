@@ -26,19 +26,21 @@ request.interceptors.response.use(
     if (res.success) {
       return res.data;
     } else {
-      showToast(res.message || '请求失败');
-      return Promise.reject(res);
+      const err = new Error(res.message || '请求失败');
+      err.isBusinessError = true;
+      err.businessMessage = res.message || '请求失败';
+      return Promise.reject(err);
     }
   },
   error => {
     if (error.response?.status === 401 || error.response?.status === 403) {
       clearAuth();
       window.location.href = '#/login';
-      showToast('请先登录');
+      showToast({ message: '请先登录', position: 'top' });
       return Promise.reject(error);
     }
     const message = error.response?.data?.message || error.message || '网络错误';
-    showToast(message);
+    showToast({ message, position: 'top' });
     return Promise.reject(error);
   }
 );

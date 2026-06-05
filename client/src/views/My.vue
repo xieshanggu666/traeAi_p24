@@ -255,12 +255,14 @@ async function handleDeleteSent(bottle) {
       message: '确定要删除吗？'
     });
     await deleteBottle(bottle.id);
-    showToast('已删除');
+    showToast({ message: '已删除', position: 'top' });
     bottles.value = bottles.value.filter(b => b.id !== bottle.id);
   } catch (error) {
-    if (error !== 'cancel') {
-      console.error('删除失败:', error);
+    if (error === 'cancel') return;
+    if (error.isBusinessError) {
+      showToast({ message: error.businessMessage, position: 'top' });
     }
+    console.error('删除失败:', error);
   }
 }
 
@@ -278,12 +280,14 @@ async function handleDeleteReceived(bottle) {
     } else {
       await softDeleteBottle(bottle.id);
     }
-    showToast('已删除');
+    showToast({ message: '已删除', position: 'top' });
     bottles.value = bottles.value.filter(b => b.id !== bottle.id);
   } catch (error) {
-    if (error !== 'cancel') {
-      console.error('删除失败:', error);
+    if (error === 'cancel') return;
+    if (error.isBusinessError) {
+      showToast({ message: error.businessMessage, position: 'top' });
     }
+    console.error('删除失败:', error);
   }
 }
 
@@ -295,12 +299,16 @@ async function handleLogout() {
     });
     await logout();
     clearAuth();
-    showToast('已退出登录');
-    router.replace('/login');
+    showToast({ message: '已退出登录', position: 'top' });
+    setTimeout(() => {
+      router.replace('/login');
+    }, 800);
   } catch (error) {
-    if (error !== 'cancel') {
-      console.error('退出登录失败:', error);
+    if (error === 'cancel') return;
+    if (error.isBusinessError) {
+      showToast({ message: error.businessMessage, position: 'top' });
     }
+    console.error('退出登录失败:', error);
   }
 }
 
@@ -318,7 +326,7 @@ function formatTime(time) {
 
 function goToChat(bottle) {
   if (bottle.status !== 'replied') {
-    showToast(bottle.status === 'picked' ? '瓶子已被捡起，等待对方回复' : '瓶子还在海里，等待被捞取');
+    showToast({ message: bottle.status === 'picked' ? '瓶子已被捡起，等待对方回复' : '瓶子还在海里，等待被捞取', position: 'top' });
     return;
   }
   router.push(`/chat/${bottle.id}`);
