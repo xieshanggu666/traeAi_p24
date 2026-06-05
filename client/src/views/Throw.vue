@@ -119,10 +119,11 @@ async function throwBottle() {
   isThrowing.value = true;
 
   try {
-    await apiThrowBottle(content.value);
+    const result = await apiThrowBottle(content.value);
+    showToast(result._message || '操作成功');
     showSuccess.value = true;
   } catch (error) {
-    console.error('扔瓶子失败:', error);
+    showToast(error.businessMessage || error.httpMessage || '出现异常');
   } finally {
     isThrowing.value = false;
   }

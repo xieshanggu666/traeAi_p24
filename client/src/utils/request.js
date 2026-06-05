@@ -23,11 +23,19 @@ request.interceptors.response.use(
   response => {
     const res = response.data;
     if (res.success) {
+      const message = res.message || '操作成功';
+      if (res.data === null || res.data === undefined) {
+        return { _message: message };
+      }
+      if (typeof res.data === 'object') {
+        res.data._message = message;
+        return res.data;
+      }
       return res.data;
     } else {
-      const err = new Error(res.message || '请求失败');
+      const err = new Error(res.message || '出现异常');
       err.isBusinessError = true;
-      err.businessMessage = res.message || '请求失败';
+      err.businessMessage = res.message || '出现异常';
       return Promise.reject(err);
     }
   },
@@ -37,7 +45,7 @@ request.interceptors.response.use(
       window.location.href = '#/login';
       return Promise.reject(error);
     }
-    const msg = error.response?.data?.message || error.message || '网络错误';
+    const msg = error.response?.data?.message || error.message || '出现异常';
     const err = new Error(msg);
     err.isHttpError = true;
     err.httpMessage = msg;

@@ -81,10 +81,10 @@ async function handleLogin() {
     const result = await login(username.value.trim(), password.value);
     setToken(result.token);
     setUser(result.user);
-    showToast('登录成功');
+    showToast(result._message || '操作成功');
     router.replace('/');
   } catch (error) {
-    console.error('登录失败:', error);
+    showToast(error.businessMessage || error.httpMessage || '出现异常');
   } finally {
     isLogging.value = false;
   }

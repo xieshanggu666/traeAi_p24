@@ -90,7 +90,7 @@ router.get('/info', async (req, res) => {
     res.json(generateResponse(true, {
       totalCoins: users[0].coins,
       todayCoins: todayRecords[0].today_coins
-    }));
+    }, '获取成功'));
   } catch (error) {
     console.error('获取福利信息失败:', error);
     res.status(500).json(generateResponse(false, null, '获取福利信息失败'));
@@ -119,7 +119,7 @@ router.get('/records', async (req, res) => {
       total: countResult[0].total,
       page,
       pageSize
-    }));
+    }, '获取成功'));
   } catch (error) {
     console.error('获取漂流币记录失败:', error);
     res.status(500).json(generateResponse(false, null, '获取漂流币记录失败'));
@@ -183,7 +183,7 @@ router.get('/checkin-status', async (req, res) => {
       claimedGifts,
       year,
       month
-    }));
+    }, '获取成功'));
   } catch (error) {
     console.error('获取签到状态失败:', error);
     res.status(500).json(generateResponse(false, null, '获取签到状态失败'));
@@ -330,7 +330,7 @@ router.get('/tasks', async (req, res) => {
       };
     });
 
-    res.json(generateResponse(true, { onceTasks, dailyTasks }));
+    res.json(generateResponse(true, { onceTasks, dailyTasks }, '获取成功'));
   } catch (error) {
     console.error('获取任务列表失败:', error);
     res.status(500).json(generateResponse(false, null, '获取任务列表失败'));
@@ -450,7 +450,7 @@ router.post('/report-usage', async (req, res) => {
     const { seconds } = req.body;
 
     if (!seconds || seconds <= 0) {
-      return res.json(generateResponse(true, null));
+      return res.json(generateResponse(true, null, '上报成功'));
     }
 
     const today = getLocalDateStr();
@@ -461,7 +461,7 @@ router.post('/report-usage', async (req, res) => {
       [seconds, userId, today]
     );
 
-    res.json(generateResponse(true, null));
+    res.json(generateResponse(true, null, '上报成功'));
   } catch (error) {
     console.error('上报使用时长失败:', error);
     res.status(500).json(generateResponse(false, null, '上报使用时长失败'));

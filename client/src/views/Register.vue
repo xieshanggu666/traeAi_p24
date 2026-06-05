@@ -111,10 +111,10 @@ async function handleRegister() {
     const result = await register(username.value.trim(), password.value);
     setToken(result.token);
     setUser(result.user);
-    showToast('注册成功');
+    showToast(result._message || '操作成功');
     router.replace('/');
   } catch (error) {
-    console.error('注册失败:', error);
+    showToast(error.businessMessage || error.httpMessage || '出现异常');
   } finally {
     isRegistering.value = false;
   }

@@ -190,7 +190,7 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import { useRouter } from 'vue-router';
-import { showDialog } from 'vant';
+import { showToast } from 'vant';
 import {
   getWelfareInfo,
   getCoinRecords,
@@ -334,37 +334,31 @@ async function handleCheckin() {
   }
   try {
     const result = await checkin();
-    if (result.alreadyCheckedIn) {
-      showDialog({ title: '提示', message: '今日已签到' });
-    } else {
-      showDialog({ title: '签到成功', message: `获得${result.amount}漂流币 🎉` });
-    }
+    showToast(result._message || '操作成功');
     await fetchCheckinStatus();
     await fetchWelfareInfo();
     showCheckinPopup.value = true;
   } catch (error) {
-    const msg = error.businessMessage || error.httpMessage || '操作失败';
-    showDialog({ title: '提示', message: msg });
+    showToast(error.businessMessage || error.httpMessage || '出现异常');
   }
 }
 
 async function handleClaimGift(gift) {
   if (gift.claimed) {
-    showDialog({ title: '提示', message: '该礼包已领取' });
+    showToast('该礼包已领取');
     return;
   }
   if (!gift.canClaim) {
-    showDialog({ title: '提示', message: `本月签到不足${gift.days}天` });
+    showToast(`本月签到不足${gift.days}天`);
     return;
   }
   try {
     const result = await claimGift(gift.days);
-    showDialog({ title: '领取成功', message: `获得${result.amount}漂流币 🎉` });
+    showToast(result._message || '操作成功');
     await fetchCheckinStatus();
     await fetchWelfareInfo();
   } catch (error) {
-    const msg = error.businessMessage || error.httpMessage || '操作失败';
-    showDialog({ title: '提示', message: msg });
+    showToast(error.businessMessage || error.httpMessage || '出现异常');
   }
 }
 
@@ -373,12 +367,11 @@ async function handleClaimTask(task) {
   if (!task.completed) return;
   try {
     const result = await claimTask(task.key);
-    showDialog({ title: '领取成功', message: `获得${result.amount}漂流币 🎉` });
+    showToast(result._message || '操作成功');
     await fetchTasks();
     await fetchWelfareInfo();
   } catch (error) {
-    const msg = error.businessMessage || error.httpMessage || '操作失败';
-    showDialog({ title: '提示', message: msg });
+    showToast(error.businessMessage || error.httpMessage || '出现异常');
   }
 }
 

@@ -313,11 +313,10 @@ async function onFileSelected(event) {
       avatar: data.avatar
     });
 
-    showToast('头像上传成功');
+    showToast(data._message || '操作成功');
     showAvatarPicker.value = false;
   } catch (error) {
-    console.error('头像上传失败:', error);
-    showToast('头像上传失败');
+    showToast(error.businessMessage || error.httpMessage || '出现异常');
   } finally {
     uploading.value = false;
     if (fileInputRef.value) {
@@ -373,10 +372,10 @@ async function handleSave() {
       avatar: data.avatar
     });
 
-    showToast('保存成功');
+    showToast(data._message || '操作成功');
     router.back();
   } catch (error) {
-    console.error('保存失败:', error);
+    showToast(error.businessMessage || error.httpMessage || '出现异常');
   } finally {
     saving.value = false;
   }

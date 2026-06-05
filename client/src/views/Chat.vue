@@ -142,8 +142,7 @@ async function initChat() {
     
     await fetchMessages();
   } catch (error) {
-    console.error('初始化聊天失败:', error);
-    showToast('加载聊天信息失败');
+    showToast(error.businessMessage || error.httpMessage || '出现异常');
   } finally {
     loading.value = false;
   }
@@ -174,7 +173,7 @@ async function sendMessage() {
     resetTextareaHeight();
     scrollToBottom();
   } catch (error) {
-    console.error('发送消息失败:', error);
+    showToast(error.businessMessage || error.httpMessage || '出现异常');
   } finally {
     isSending.value = false;
   }

@@ -175,10 +175,11 @@ async function pickBottle() {
     const result = await apiPickBottle();
     bottle.value = result;
   } catch (error) {
-    if (error.message === '海里暂时没有漂流瓶') {
+    if (error.businessMessage === '海里暂时没有漂流瓶') {
       showEmpty.value = true;
+    } else {
+      showToast(error.businessMessage || error.httpMessage || '出现异常');
     }
-    console.error('捞瓶子失败:', error);
   } finally {
     isPicking.value = false;
   }
@@ -190,12 +191,12 @@ async function returnBottle() {
   isReturning.value = true;
 
   try {
-    await apiReturnBottle(bottle.value.id);
-    showToast('已扔回海里');
+    const result = await apiReturnBottle(bottle.value.id);
+    showToast(result._message || '操作成功');
     bottle.value = null;
     showReply.value = false;
   } catch (error) {
-    console.error('扔回瓶子失败:', error);
+    showToast(error.businessMessage || error.httpMessage || '出现异常');
   } finally {
     isReturning.value = false;
   }
@@ -216,10 +217,10 @@ async function replyBottle() {
 
   try {
     const result = await apiReplyBottle(bottle.value.id, replyContent.value);
-    showToast('回复成功，已开启私聊');
+    showToast(result._message || '操作成功');
     router.push(`/chat/${bottle.value.id}`);
   } catch (error) {
-    console.error('回复瓶子失败:', error);
+    showToast(error.businessMessage || error.httpMessage || '出现异常');
   } finally {
     isReplying.value = false;
   }
