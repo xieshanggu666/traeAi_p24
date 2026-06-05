@@ -3,6 +3,11 @@ const router = express.Router();
 const pool = require('../config/db');
 const { generateUUID, generateResponse } = require('../utils/helper');
 
+function getLocalDateStr(date) {
+  const d = date || new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 async function ensureDailyStat(userId, date) {
   const [rows] = await pool.execute(
     'SELECT id FROM daily_stats WHERE user_id = ? AND stat_date = ?',
@@ -33,7 +38,7 @@ router.post('/throw', async (req, res) => {
       [bottleId, senderId, content.trim(), 'floating']
     );
 
-    const today = new Date().toISOString().split('T')[0];
+    const today = getLocalDateStr();
     await ensureDailyStat(senderId, today);
     await pool.execute(
       'UPDATE daily_stats SET throw_count = throw_count + 1 WHERE user_id = ? AND stat_date = ?',
@@ -74,7 +79,7 @@ router.post('/pick', async (req, res) => {
       ['picked', pickerId, bottle.id]
     );
 
-    const today = new Date().toISOString().split('T')[0];
+    const today = getLocalDateStr();
     await ensureDailyStat(pickerId, today);
     await pool.execute(
       'UPDATE daily_stats SET pick_count = pick_count + 1 WHERE user_id = ? AND stat_date = ?',

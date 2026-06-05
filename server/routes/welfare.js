@@ -23,6 +23,17 @@ const GIFTS = [
   { days: 21, minAmount: 280, maxAmount: 840 }
 ];
 
+function getLocalDateStr(date) {
+  const d = date || new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function formatDbDate(dbValue) {
+  if (typeof dbValue === 'string') return dbValue.split('T')[0];
+  if (dbValue instanceof Date) return getLocalDateStr(dbValue);
+  return String(dbValue);
+}
+
 async function ensureDailyStat(userId, date) {
   const [rows] = await pool.execute(
     'SELECT id FROM daily_stats WHERE user_id = ? AND stat_date = ?',
@@ -70,7 +81,7 @@ router.get('/info', async (req, res) => {
       return res.status(404).json(generateResponse(false, null, '用户不存在'));
     }
 
-    const today = new Date().toISOString().split('T')[0];
+    const today = getLocalDateStr();
     const [todayRecords] = await pool.execute(
       'SELECT COALESCE(SUM(amount), 0) as today_coins FROM coin_records WHERE user_id = ? AND DATE(created_at) = ?',
       [userId, today]
@@ -118,7 +129,7 @@ router.get('/records', async (req, res) => {
 router.post('/checkin', async (req, res) => {
   try {
     const userId = req.user.userId;
-    const today = new Date().toISOString().split('T')[0];
+    const today = getLocalDateStr();
 
     const [existing] = await pool.execute(
       'SELECT id FROM checkins WHERE user_id = ? AND checkin_date = ?',
@@ -126,7 +137,7 @@ router.post('/checkin', async (req, res) => {
     );
 
     if (existing.length > 0) {
-      return res.status(400).json(generateResponse(false, null, '今日已签到'));
+      return res.status(200).json(generateResponse(true, { amount: 0, alreadyCheckedIn: true }, '今日已签到'));
     }
 
     const checkinId = generateUUID();
@@ -157,7 +168,7 @@ router.get('/checkin-status', async (req, res) => {
       [userId, startDate, endDate]
     );
 
-    const checkinDates = checkins.map(c => c.checkin_date.toISOString().split('T')[0]);
+    const checkinDates = checkins.map(c => formatDbDate(c.checkin_date));
 
     const { startDate: monthStart, endDate: monthEnd } = getMonthRange(year, month);
     const [giftClaims] = await pool.execute(
@@ -231,7 +242,7 @@ router.post('/claim-gift', async (req, res) => {
 router.get('/tasks', async (req, res) => {
   try {
     const userId = req.user.userId;
-    const today = new Date().toISOString().split('T')[0];
+    const today = getLocalDateStr();
 
     const [onceClaims] = await pool.execute(
       'SELECT task_key FROM task_claims WHERE user_id = ? AND task_type = ?',
@@ -337,7 +348,7 @@ router.post('/claim-task', async (req, res) => {
       return res.status(400).json(generateResponse(false, null, '无效的任务'));
     }
 
-    const today = new Date().toISOString().split('T')[0];
+    const today = getLocalDateStr();
 
     if (task.type === 'once') {
       const [existing] = await pool.execute(
@@ -442,7 +453,7 @@ router.post('/report-usage', async (req, res) => {
       return res.json(generateResponse(true, null));
     }
 
-    const today = new Date().toISOString().split('T')[0];
+    const today = getLocalDateStr();
     await ensureDailyStat(userId, today);
 
     await pool.execute(

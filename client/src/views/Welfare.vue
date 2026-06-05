@@ -29,7 +29,6 @@
           block
           class="checkin-btn"
           @click="handleCheckin"
-          :disabled="todayCheckedIn"
         >
           {{ todayCheckedIn ? '✅ 今日已签到' : '📝 点击签到' }}
         </van-button>
@@ -329,15 +328,19 @@ async function fetchCoinRecords() {
 }
 
 async function handleCheckin() {
+  showCheckinPopup.value = true;
   if (todayCheckedIn.value) return;
   try {
     const result = await checkin();
-    showToast(`签到成功，获得${result.amount}漂流币`);
-    showCheckinPopup.value = true;
+    if (result.alreadyCheckedIn) {
+      showToast('今日已签到');
+    } else {
+      showToast(`签到成功，获得${result.amount}漂流币`);
+    }
     await fetchCheckinStatus();
     await fetchWelfareInfo();
   } catch (error) {
-    if (error?.message) showToast(error.message);
+    console.error('签到失败:', error);
   }
 }
 
@@ -352,11 +355,11 @@ async function handleClaimGift(gift) {
   }
   try {
     const result = await claimGift(gift.days);
-    showToast(`获得${result.amount}漂流币`);
+    showToast(`🎉 获得${result.amount}漂流币`);
     await fetchCheckinStatus();
     await fetchWelfareInfo();
   } catch (error) {
-    if (error?.message) showToast(error.message);
+    console.error('领取礼包失败:', error);
   }
 }
 
@@ -365,11 +368,11 @@ async function handleClaimTask(task) {
   if (!task.completed) return;
   try {
     const result = await claimTask(task.key);
-    showToast(`获得${result.amount}漂流币`);
+    showToast(`🎉 获得${result.amount}漂流币`);
     await fetchTasks();
     await fetchWelfareInfo();
   } catch (error) {
-    if (error?.message) showToast(error.message);
+    console.error('领取任务奖励失败:', error);
   }
 }
 
