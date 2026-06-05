@@ -30,6 +30,9 @@ async function initDatabase() {
         password VARCHAR(255) NOT NULL COMMENT '密码(加密)',
         nickname VARCHAR(50) NOT NULL COMMENT '匿名昵称',
         avatar VARCHAR(255) DEFAULT NULL COMMENT '头像',
+        gender VARCHAR(10) DEFAULT NULL COMMENT '性别',
+        birthday DATE DEFAULT NULL COMMENT '出生年月',
+        bio VARCHAR(200) DEFAULT NULL COMMENT '个人介绍',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
         last_active_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '最后活跃时间'
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci

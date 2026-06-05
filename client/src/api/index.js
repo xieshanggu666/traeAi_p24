@@ -12,6 +12,10 @@ export const getUserInfo = () => {
   return request.get('/user/info');
 };
 
+export const updateProfile = (data) => {
+  return request.put('/user/profile', data);
+};
+
 export const logout = () => {
   return request.post('/user/logout');
 };

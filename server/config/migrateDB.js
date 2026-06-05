@@ -52,6 +52,51 @@ async function migrateDatabase() {
       }
     }
 
+    console.log('检查并添加gender字段...');
+    try {
+      await pool.execute(`
+        ALTER TABLE users 
+        ADD COLUMN gender VARCHAR(10) DEFAULT NULL COMMENT '性别' AFTER avatar
+      `);
+      console.log('gender字段添加成功');
+    } catch (error) {
+      if (error.code === 'ER_DUP_FIELDNAME') {
+        console.log('gender字段已存在，跳过');
+      } else {
+        throw error;
+      }
+    }
+
+    console.log('检查并添加birthday字段...');
+    try {
+      await pool.execute(`
+        ALTER TABLE users 
+        ADD COLUMN birthday DATE DEFAULT NULL COMMENT '出生年月' AFTER gender
+      `);
+      console.log('birthday字段添加成功');
+    } catch (error) {
+      if (error.code === 'ER_DUP_FIELDNAME') {
+        console.log('birthday字段已存在，跳过');
+      } else {
+        throw error;
+      }
+    }
+
+    console.log('检查并添加bio字段...');
+    try {
+      await pool.execute(`
+        ALTER TABLE users 
+        ADD COLUMN bio VARCHAR(200) DEFAULT NULL COMMENT '个人介绍' AFTER birthday
+      `);
+      console.log('bio字段添加成功');
+    } catch (error) {
+      if (error.code === 'ER_DUP_FIELDNAME') {
+        console.log('bio字段已存在，跳过');
+      } else {
+        throw error;
+      }
+    }
+
     console.log('\n数据库迁移完成！');
     process.exit(0);
   } catch (error) {

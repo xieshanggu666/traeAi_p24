@@ -135,7 +135,7 @@ router.get('/info', authenticateToken, async (req, res) => {
     const userId = req.user.userId;
 
     const [users] = await pool.execute(
-      'SELECT id, username, nickname, avatar, created_at, last_active_at FROM users WHERE id = ?',
+      'SELECT id, username, nickname, avatar, gender, birthday, bio, created_at, last_active_at FROM users WHERE id = ?',
       [userId]
     );
 
@@ -147,6 +147,72 @@ router.get('/info', authenticateToken, async (req, res) => {
   } catch (error) {
     console.error('获取用户信息失败:', error);
     res.status(500).json(generateResponse(false, null, '获取用户信息失败'));
+  }
+});
+
+router.put('/profile', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const { nickname, avatar, gender, birthday, bio } = req.body;
+
+    const updates = [];
+    const values = [];
+
+    if (nickname !== undefined) {
+      if (nickname.length < 1 || nickname.length > 50) {
+        return res.status(400).json(generateResponse(false, null, '昵称长度应在1-50个字符之间'));
+      }
+      updates.push('nickname = ?');
+      values.push(nickname);
+    }
+
+    if (avatar !== undefined) {
+      updates.push('avatar = ?');
+      values.push(avatar);
+    }
+
+    if (gender !== undefined) {
+      const validGenders = ['男', '女', '保密'];
+      if (gender && !validGenders.includes(gender)) {
+        return res.status(400).json(generateResponse(false, null, '性别值无效'));
+      }
+      updates.push('gender = ?');
+      values.push(gender || null);
+    }
+
+    if (birthday !== undefined) {
+      updates.push('birthday = ?');
+      values.push(birthday || null);
+    }
+
+    if (bio !== undefined) {
+      if (bio && bio.length > 200) {
+        return res.status(400).json(generateResponse(false, null, '个人介绍不能超过200个字符'));
+      }
+      updates.push('bio = ?');
+      values.push(bio || null);
+    }
+
+    if (updates.length === 0) {
+      return res.status(400).json(generateResponse(false, null, '没有需要更新的字段'));
+    }
+
+    values.push(userId);
+
+    await pool.execute(
+      `UPDATE users SET ${updates.join(', ')} WHERE id = ?`,
+      values
+    );
+
+    const [users] = await pool.execute(
+      'SELECT id, username, nickname, avatar, gender, birthday, bio, created_at, last_active_at FROM users WHERE id = ?',
+      [userId]
+    );
+
+    res.json(generateResponse(true, users[0], '更新成功'));
+  } catch (error) {
+    console.error('更新个人信息失败:', error);
+    res.status(500).json(generateResponse(false, null, '更新个人信息失败'));
   }
 });
 

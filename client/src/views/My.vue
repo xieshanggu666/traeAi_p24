@@ -18,6 +18,10 @@
           退出登录
         </van-button>
       </div>
+      <div class="profile-entry" @click="goToEditProfile">
+        <van-icon name="edit" size="14" />
+        <span>编辑资料</span>
+      </div>
     </div>
 
     <div class="content">
@@ -157,8 +161,8 @@
 import { ref, computed, onMounted, watch } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import { showToast, showConfirmDialog } from 'vant';
-import { getUser, clearAuth } from '../utils/storage';
-import { getMyBottles, logout, deleteBottle, softDeleteBottle } from '../api';
+import { getUser, clearAuth, setUser } from '../utils/storage';
+import { getMyBottles, logout, deleteBottle, softDeleteBottle, getUserInfo } from '../api';
 
 const router = useRouter();
 const route = useRoute();
@@ -195,6 +199,7 @@ onMounted(() => {
   user.value = getUser();
   if (user.value) {
     fetchMyBottles();
+    refreshUserInfo();
   }
 });
 
@@ -203,9 +208,20 @@ watch(
   () => {
     if (route.path === '/my' && user.value) {
       fetchMyBottles();
+      refreshUserInfo();
     }
   }
 );
+
+async function refreshUserInfo() {
+  try {
+    const userInfo = await getUserInfo();
+    user.value = userInfo;
+    setUser(userInfo);
+  } catch (error) {
+    console.error('刷新用户信息失败:', error);
+  }
+}
 
 async function fetchMyBottles() {
   loading.value = true;
@@ -313,6 +329,10 @@ function goToHome() {
 function goToThrow() {
   router.push('/throw');
 }
+
+function goToEditProfile() {
+  router.push('/edit-profile');
+}
 </script>
 
 <style scoped>
@@ -379,6 +399,29 @@ function goToThrow() {
 
 .logout-btn {
   border-radius: 16px;
+}
+
+.profile-entry {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin: 12px 16px 0;
+  padding: 10px;
+  background: rgba(255, 255, 255, 0.95);
+  border-radius: 10px;
+  color: #1989fa;
+  font-size: 14px;
+  font-weight: 500;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.profile-entry:active {
+  background: #f0f7ff;
 }
 
 .content {
