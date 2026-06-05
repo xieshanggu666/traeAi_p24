@@ -12,7 +12,7 @@
       <div class="avatar-section" @click="showAvatarPicker = true">
         <div class="avatar-label">头像</div>
         <div class="avatar-right">
-          <span class="avatar-emoji">{{ form.avatar }}</span>
+          <AvatarDisplay :avatar="form.avatar" :size="50" />
           <van-icon name="arrow" color="#999" />
         </div>
       </div>
@@ -21,7 +21,7 @@
         title="昵称"
         :value="form.nickname"
         is-link
-        @click="showNicknameEditor = true"
+        @click="openNicknameEditor"
       />
 
       <van-cell
@@ -39,10 +39,17 @@
       />
 
       <van-cell
+        title="年龄"
+        :value="computedAge"
+        is-link
+        @click="showBirthdayPicker = true"
+      />
+
+      <van-cell
         title="个人介绍"
         :value="form.bio || '未设置'"
         is-link
-        @click="showBioEditor = true"
+        @click="openBioEditor"
       />
     </div>
 
@@ -58,6 +65,14 @@
       </van-button>
     </div>
 
+    <input
+      ref="fileInputRef"
+      type="file"
+      accept="image/jpeg,image/png,image/gif,image/webp"
+      style="display: none"
+      @change="onFileSelected"
+    />
+
     <van-popup
       v-model:show="showAvatarPicker"
       position="bottom"
@@ -68,6 +83,10 @@
         <div class="avatar-picker-header">
           <span>选择头像</span>
           <van-icon name="cross" size="18" @click="showAvatarPicker = false" />
+        </div>
+        <div class="avatar-upload-btn" @click="triggerFileUpload">
+          <van-icon name="photograph" size="24" />
+          <span>上传本地图片</span>
         </div>
         <div class="avatar-grid">
           <div
@@ -157,11 +176,12 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { showToast } from 'vant';
-import { getUserInfo, updateProfile } from '../api';
+import { getUserInfo, updateProfile, uploadAvatar } from '../api';
 import { getUser, setUser } from '../utils/storage';
+import AvatarDisplay from '../components/AvatarDisplay.vue';
 
 const router = useRouter();
 
@@ -188,6 +208,7 @@ const form = ref({
 });
 
 const saving = ref(false);
+const uploading = ref(false);
 const showAvatarPicker = ref(false);
 const showNicknameEditor = ref(false);
 const showGenderPicker = ref(false);
@@ -197,6 +218,19 @@ const showBioEditor = ref(false);
 const tempNickname = ref('');
 const tempBio = ref('');
 const tempBirthday = ref(['2000', '01', '01']);
+const fileInputRef = ref(null);
+
+const computedAge = computed(() => {
+  if (!form.value.birthday) return '未设置';
+  const birthday = new Date(form.value.birthday);
+  const today = new Date();
+  let age = today.getFullYear() - birthday.getFullYear();
+  const monthDiff = today.getMonth() - birthday.getMonth();
+  if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthday.getDate())) {
+    age--;
+  }
+  return age >= 0 ? `${age}岁` : '未设置';
+});
 
 onMounted(async () => {
   const localUser = getUser();
@@ -231,9 +265,65 @@ function formatDate(dateStr) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
+function openNicknameEditor() {
+  tempNickname.value = form.value.nickname;
+  showNicknameEditor.value = true;
+}
+
+function openBioEditor() {
+  tempBio.value = form.value.bio;
+  showBioEditor.value = true;
+}
+
 function selectAvatar(item) {
   form.value.avatar = item;
   showAvatarPicker.value = false;
+}
+
+function triggerFileUpload() {
+  fileInputRef.value?.click();
+}
+
+async function onFileSelected(event) {
+  const file = event.target.files?.[0];
+  if (!file) return;
+
+  if (file.size > 2 * 1024 * 1024) {
+    showToast('图片大小不能超过2MB');
+    return;
+  }
+
+  const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+  if (!allowedTypes.includes(file.type)) {
+    showToast('只支持 JPG、PNG、GIF、WebP 格式');
+    return;
+  }
+
+  uploading.value = true;
+  try {
+    const formData = new FormData();
+    formData.append('avatar', file);
+    const data = await uploadAvatar(formData);
+    form.value.avatar = data.avatar;
+
+    const localUser = getUser() || {};
+    setUser({
+      ...localUser,
+      nickname: data.nickname,
+      avatar: data.avatar
+    });
+
+    showToast('头像上传成功');
+    showAvatarPicker.value = false;
+  } catch (error) {
+    console.error('头像上传失败:', error);
+    showToast('头像上传失败');
+  } finally {
+    uploading.value = false;
+    if (fileInputRef.value) {
+      fileInputRef.value.value = '';
+    }
+  }
 }
 
 function confirmNickname() {
@@ -335,17 +425,6 @@ function goBack() {
   gap: 8px;
 }
 
-.avatar-emoji {
-  font-size: 40px;
-  width: 50px;
-  height: 50px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: linear-gradient(135deg, #667eea15 0%, #764ba215 100%);
-  border-radius: 50%;
-}
-
 .save-section {
   margin: 32px 16px;
 }
@@ -362,6 +441,26 @@ function goBack() {
   font-size: 16px;
   font-weight: bold;
   color: #333;
+}
+
+.avatar-upload-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px;
+  margin-bottom: 12px;
+  background: linear-gradient(135deg, #667eea15 0%, #764ba215 100%);
+  border-radius: 10px;
+  color: #667eea;
+  font-size: 15px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.avatar-upload-btn:active {
+  background: linear-gradient(135deg, #667eea25 0%, #764ba225 100%);
 }
 
 .avatar-grid {

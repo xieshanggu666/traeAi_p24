@@ -16,6 +16,13 @@ export const updateProfile = (data) => {
   return request.put('/user/profile', data);
 };
 
+export const uploadAvatar = (formData) => {
+  return request.post('/user/upload-avatar', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: 30000
+  });
+};
+
 export const logout = () => {
   return request.post('/user/logout');
 };

@@ -3,7 +3,7 @@
     <div class="chat-header">
       <van-icon name="arrow-left" size="24" @click="goBack" />
       <div class="chat-user-info">
-        <span class="chat-avatar">{{ otherUser?.avatar || '🐱' }}</span>
+        <AvatarDisplay :avatar="otherUser?.avatar || '🐱'" :size="44" class="chat-avatar" />
         <div class="chat-user-detail">
           <div class="chat-nickname">{{ otherUser?.nickname || '匿名用户' }}</div>
           <div class="chat-status">匿名聊天中</div>
@@ -24,9 +24,7 @@
         :key="msg.id"
         :class="{ 'is-mine': msg.sender_id === currentUserId }"
       >
-        <span class="message-avatar" v-if="msg.sender_id !== currentUserId">
-          {{ otherUser?.avatar || msg.sender_avatar }}
-        </span>
+        <AvatarDisplay :avatar="otherUser?.avatar || msg.sender_avatar" :size="36" class="message-avatar" v-if="msg.sender_id !== currentUserId" />
         <template v-if="msg.sender_id !== currentUserId">
           <div class="message-bubble">
             <div class="message-content">{{ msg.content }}</div>
@@ -38,9 +36,7 @@
             <div class="message-content">{{ msg.content }}</div>
             <div class="message-time">{{ formatTime(msg.created_at) }}</div>
           </div>
-          <span class="message-avatar mine">
-            {{ currentUser?.avatar }}
-          </span>
+          <AvatarDisplay :avatar="currentUser?.avatar" :size="36" class="message-avatar mine" />
         </template>
       </div>
 
@@ -87,6 +83,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { showToast } from 'vant';
 import { getUser } from '../utils/storage';
 import { getMessages, sendMessage as apiSendMessage, getBottleDetail } from '../api';
+import AvatarDisplay from '../components/AvatarDisplay.vue';
 
 const route = useRoute();
 const router = useRouter();
@@ -244,14 +241,7 @@ function goBack() {
 }
 
 .chat-avatar {
-  font-size: 32px;
-  background: #f0f7ff;
-  width: 44px;
-  height: 44px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  flex-shrink: 0;
 }
 
 .chat-user-detail {
@@ -310,19 +300,7 @@ function goBack() {
 }
 
 .message-avatar {
-  font-size: 28px;
-  background: #f0f7ff;
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
   flex-shrink: 0;
-}
-
-.message-avatar.mine {
-  background: #fff0e6;
 }
 
 .message-bubble {

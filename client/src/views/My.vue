@@ -3,7 +3,7 @@
     <div class="header">
       <div class="header-bg"></div>
       <div class="user-card">
-        <span class="user-avatar">{{ user?.avatar }}</span>
+        <AvatarDisplay :avatar="user?.avatar" :size="70" class="user-avatar" />
         <div class="user-info">
           <div class="user-nickname">{{ user?.nickname }}</div>
           <div class="user-username">账号: {{ user?.username }}</div>
@@ -39,7 +39,7 @@
                 >
                   <div class="bottle-item-header">
                     <div class="avatar-wrapper">
-                      <span class="bottle-avatar">{{ bottle.other_avatar }}</span>
+                      <AvatarDisplay :avatar="bottle.other_avatar" :size="44" />
                       <span
                         class="unread-dot"
                         v-if="bottle.unread_count > 0 && bottle.latest_sender_id !== currentUserId"
@@ -99,7 +99,7 @@
                   @click="goToChat(bottle)"
                 >
                   <div class="bottle-item-header">
-                    <span class="bottle-avatar">{{ bottle.other_avatar }}</span>
+                    <AvatarDisplay :avatar="bottle.other_avatar" :size="44" />
                     <div class="bottle-user-info">
                       <div class="bottle-nickname">{{ bottle.other_nickname }}</div>
                       <div class="bottle-type" :class="bottle.status">
@@ -163,6 +163,7 @@ import { useRouter, useRoute } from 'vue-router';
 import { showToast, showConfirmDialog } from 'vant';
 import { getUser, clearAuth, setUser } from '../utils/storage';
 import { getMyBottles, logout, deleteBottle, softDeleteBottle, getUserInfo } from '../api';
+import AvatarDisplay from '../components/AvatarDisplay.vue';
 
 const router = useRouter();
 const route = useRoute();
@@ -373,12 +374,8 @@ function goToEditProfile() {
 .user-avatar {
   font-size: 48px;
   background: linear-gradient(135deg, #667eea15 0%, #764ba215 100%);
-  width: 70px;
-  height: 70px;
   border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  flex-shrink: 0;
 }
 
 .user-info {
@@ -456,18 +453,6 @@ function goToEditProfile() {
 
 .avatar-wrapper {
   position: relative;
-  flex-shrink: 0;
-}
-
-.bottle-avatar {
-  font-size: 32px;
-  background: #f0f7ff;
-  width: 44px;
-  height: 44px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
   flex-shrink: 0;
 }
 

@@ -2,8 +2,33 @@ const express = require('express');
 const router = express.Router();
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const multer = require('multer');
+const path = require('path');
 const pool = require('../config/db');
 const { generateUUID, generateNickname, generateAvatar, generateResponse } = require('../utils/helper');
+
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, path.join(__dirname, '..', 'uploads', 'avatars'));
+  },
+  filename: function (req, file, cb) {
+    const ext = path.extname(file.originalname);
+    cb(null, `${req.user.userId}-${Date.now()}${ext}`);
+  }
+});
+
+const upload = multer({
+  storage: storage,
+  limits: { fileSize: 2 * 1024 * 1024 },
+  fileFilter: function (req, file, cb) {
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+    if (allowedTypes.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('只支持 JPG、PNG、GIF、WebP 格式的图片'));
+    }
+  }
+});
 
 const JWT_SECRET = process.env.JWT_SECRET || 'drift_bottle_secret';
 
@@ -148,6 +173,39 @@ router.get('/info', authenticateToken, async (req, res) => {
     console.error('获取用户信息失败:', error);
     res.status(500).json(generateResponse(false, null, '获取用户信息失败'));
   }
+});
+
+router.post('/upload-avatar', authenticateToken, (req, res) => {
+  upload.single('avatar')(req, res, async function (err) {
+    if (err) {
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(400).json(generateResponse(false, null, '图片大小不能超过2MB'));
+      }
+      return res.status(400).json(generateResponse(false, null, err.message || '上传失败'));
+    }
+
+    if (!req.file) {
+      return res.status(400).json(generateResponse(false, null, '请选择图片'));
+    }
+
+    try {
+      const avatarUrl = `/uploads/avatars/${req.file.filename}`;
+      await pool.execute(
+        'UPDATE users SET avatar = ? WHERE id = ?',
+        [avatarUrl, req.user.userId]
+      );
+
+      const [users] = await pool.execute(
+        'SELECT id, username, nickname, avatar, gender, birthday, bio, created_at, last_active_at FROM users WHERE id = ?',
+        [req.user.userId]
+      );
+
+      res.json(generateResponse(true, users[0], '头像上传成功'));
+    } catch (error) {
+      console.error('头像上传失败:', error);
+      res.status(500).json(generateResponse(false, null, '头像上传失败'));
+    }
+  });
 });
 
 router.put('/profile', authenticateToken, async (req, res) => {

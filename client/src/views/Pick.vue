@@ -28,7 +28,7 @@
         <div class="bottle-card">
           <div class="bottle-header">
             <div class="sender-info">
-              <span class="sender-avatar">{{ bottle.senderAvatar }}</span>
+              <AvatarDisplay :avatar="bottle.senderAvatar" :size="50" class="sender-avatar" />
               <div class="sender-detail">
                 <div class="sender-nickname">{{ bottle.senderNickname }}</div>
                 <div class="bottle-time">{{ formatTime(bottle.createdAt) }}</div>
@@ -140,6 +140,7 @@ import { useRouter } from 'vue-router';
 import { showToast } from 'vant';
 import { getUser } from '../utils/storage';
 import { pickBottle as apiPickBottle, returnBottle as apiReturnBottle, replyBottle as apiReplyBottle } from '../api';
+import AvatarDisplay from '../components/AvatarDisplay.vue';
 
 const router = useRouter();
 const bottle = ref(null);
@@ -318,14 +319,7 @@ function goBack() {
 }
 
 .sender-avatar {
-  font-size: 36px;
-  background: #f0f7ff;
-  width: 50px;
-  height: 50px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  flex-shrink: 0;
 }
 
 .sender-detail {

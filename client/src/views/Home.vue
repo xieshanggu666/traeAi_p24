@@ -4,7 +4,7 @@
     <div class="content-wrapper">
       <div class="header">
         <div class="user-info">
-          <span class="avatar">{{ user?.avatar }}</span>
+          <AvatarDisplay :avatar="user?.avatar" :size="50" class="avatar" />
           <div class="user-detail">
             <div class="nickname">{{ user?.nickname }}</div>
             <div class="user-id">ID: {{ shortUserId }}</div>
@@ -65,6 +65,7 @@ import { useRouter } from 'vue-router';
 import { showToast } from 'vant';
 import { getUser } from '../utils/storage';
 import { getUnreadCount } from '../api';
+import AvatarDisplay from '../components/AvatarDisplay.vue';
 
 const router = useRouter();
 const user = ref(null);
@@ -130,14 +131,7 @@ watch(active, (newVal) => {
 }
 
 .avatar {
-  font-size: 40px;
-  background: rgba(255, 255, 255, 0.3);
-  width: 50px;
-  height: 50px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  flex-shrink: 0;
 }
 
 .user-detail {
