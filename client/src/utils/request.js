@@ -1,5 +1,4 @@
 import axios from 'axios';
-import { showToast } from 'vant';
 import { getToken, clearAuth } from './storage';
 
 const request = axios.create({
@@ -36,12 +35,13 @@ request.interceptors.response.use(
     if (error.response?.status === 401 || error.response?.status === 403) {
       clearAuth();
       window.location.href = '#/login';
-      showToast({ message: '请先登录', position: 'top' });
       return Promise.reject(error);
     }
-    const message = error.response?.data?.message || error.message || '网络错误';
-    showToast({ message, position: 'top' });
-    return Promise.reject(error);
+    const msg = error.response?.data?.message || error.message || '网络错误';
+    const err = new Error(msg);
+    err.isHttpError = true;
+    err.httpMessage = msg;
+    return Promise.reject(err);
   }
 );
 

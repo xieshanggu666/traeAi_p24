@@ -190,7 +190,7 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import { useRouter } from 'vue-router';
-import { showToast } from 'vant';
+import { showDialog } from 'vant';
 import {
   getWelfareInfo,
   getCoinRecords,
@@ -335,42 +335,36 @@ async function handleCheckin() {
   try {
     const result = await checkin();
     if (result.alreadyCheckedIn) {
-      showToast({ message: '今日已签到', position: 'top' });
+      showDialog({ title: '提示', message: '今日已签到' });
     } else {
-      showToast({ message: `签到成功，获得${result.amount}漂流币`, position: 'top' });
+      showDialog({ title: '签到成功', message: `获得${result.amount}漂流币 🎉` });
     }
     await fetchCheckinStatus();
     await fetchWelfareInfo();
-    setTimeout(() => {
-      showCheckinPopup.value = true;
-    }, 1500);
+    showCheckinPopup.value = true;
   } catch (error) {
-    if (error.isBusinessError) {
-      showToast({ message: error.businessMessage, position: 'top' });
-    }
-    console.error('签到失败:', error);
+    const msg = error.businessMessage || error.httpMessage || '操作失败';
+    showDialog({ title: '提示', message: msg });
   }
 }
 
 async function handleClaimGift(gift) {
   if (gift.claimed) {
-    showToast({ message: '该礼包已领取', position: 'top' });
+    showDialog({ title: '提示', message: '该礼包已领取' });
     return;
   }
   if (!gift.canClaim) {
-    showToast({ message: `本月签到不足${gift.days}天`, position: 'top' });
+    showDialog({ title: '提示', message: `本月签到不足${gift.days}天` });
     return;
   }
   try {
     const result = await claimGift(gift.days);
-    showToast({ message: `🎉 获得${result.amount}漂流币`, position: 'top', duration: 2000 });
+    showDialog({ title: '领取成功', message: `获得${result.amount}漂流币 🎉` });
     await fetchCheckinStatus();
     await fetchWelfareInfo();
   } catch (error) {
-    if (error.isBusinessError) {
-      showToast({ message: error.businessMessage, position: 'top' });
-    }
-    console.error('领取礼包失败:', error);
+    const msg = error.businessMessage || error.httpMessage || '操作失败';
+    showDialog({ title: '提示', message: msg });
   }
 }
 
@@ -379,14 +373,12 @@ async function handleClaimTask(task) {
   if (!task.completed) return;
   try {
     const result = await claimTask(task.key);
-    showToast({ message: `🎉 获得${result.amount}漂流币`, position: 'top', duration: 2000 });
+    showDialog({ title: '领取成功', message: `获得${result.amount}漂流币 🎉` });
     await fetchTasks();
     await fetchWelfareInfo();
   } catch (error) {
-    if (error.isBusinessError) {
-      showToast({ message: error.businessMessage, position: 'top' });
-    }
-    console.error('领取任务奖励失败:', error);
+    const msg = error.businessMessage || error.httpMessage || '操作失败';
+    showDialog({ title: '提示', message: msg });
   }
 }
 

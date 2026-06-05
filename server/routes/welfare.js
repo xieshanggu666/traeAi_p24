@@ -266,8 +266,8 @@ router.get('/tasks', async (req, res) => {
       [userId]
     );
 
-    const [pickedBottles] = await pool.execute(
-      'SELECT COUNT(*) as count FROM bottles WHERE picker_id = ?',
+    const [pickStats] = await pool.execute(
+      'SELECT COALESCE(SUM(pick_count), 0) as total FROM daily_stats WHERE user_id = ?',
       [userId]
     );
 
@@ -287,7 +287,7 @@ router.get('/tasks', async (req, res) => {
           completed = thrownBottles[0].count > 0;
           break;
         case 'first_pick':
-          completed = pickedBottles[0].count > 0;
+          completed = pickStats[0].total > 0;
           break;
       }
       return {
@@ -377,8 +377,8 @@ router.post('/claim-task', async (req, res) => {
         'SELECT COUNT(*) as count FROM bottles WHERE sender_id = ?',
         [userId]
       );
-      const [pickedBottles] = await pool.execute(
-        'SELECT COUNT(*) as count FROM bottles WHERE picker_id = ?',
+      const [pickStats] = await pool.execute(
+        'SELECT COALESCE(SUM(pick_count), 0) as total FROM daily_stats WHERE user_id = ?',
         [userId]
       );
 
@@ -391,7 +391,7 @@ router.post('/claim-task', async (req, res) => {
           completed = thrownBottles[0].count > 0;
           break;
         case 'first_pick':
-          completed = pickedBottles[0].count > 0;
+          completed = pickStats[0].total > 0;
           break;
       }
 

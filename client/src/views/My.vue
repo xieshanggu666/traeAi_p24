@@ -161,7 +161,7 @@
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
-import { showToast, showConfirmDialog } from 'vant';
+import { showDialog, showConfirmDialog } from 'vant';
 import { getUser, clearAuth, setUser } from '../utils/storage';
 import { getMyBottles, logout, deleteBottle, softDeleteBottle, getUserInfo } from '../api';
 import AvatarDisplay from '../components/AvatarDisplay.vue';
@@ -255,14 +255,12 @@ async function handleDeleteSent(bottle) {
       message: '确定要删除吗？'
     });
     await deleteBottle(bottle.id);
-    showToast({ message: '已删除', position: 'top' });
+    showDialog({ title: '提示', message: '已删除' });
     bottles.value = bottles.value.filter(b => b.id !== bottle.id);
   } catch (error) {
     if (error === 'cancel') return;
-    if (error.isBusinessError) {
-      showToast({ message: error.businessMessage, position: 'top' });
-    }
-    console.error('删除失败:', error);
+    const msg = error.businessMessage || error.httpMessage || '删除失败';
+    showDialog({ title: '提示', message: msg });
   }
 }
 
@@ -280,14 +278,12 @@ async function handleDeleteReceived(bottle) {
     } else {
       await softDeleteBottle(bottle.id);
     }
-    showToast({ message: '已删除', position: 'top' });
+    showDialog({ title: '提示', message: '已删除' });
     bottles.value = bottles.value.filter(b => b.id !== bottle.id);
   } catch (error) {
     if (error === 'cancel') return;
-    if (error.isBusinessError) {
-      showToast({ message: error.businessMessage, position: 'top' });
-    }
-    console.error('删除失败:', error);
+    const msg = error.businessMessage || error.httpMessage || '删除失败';
+    showDialog({ title: '提示', message: msg });
   }
 }
 
@@ -299,16 +295,13 @@ async function handleLogout() {
     });
     await logout();
     clearAuth();
-    showToast({ message: '已退出登录', position: 'top' });
     setTimeout(() => {
       router.replace('/login');
-    }, 800);
+    }, 300);
   } catch (error) {
     if (error === 'cancel') return;
-    if (error.isBusinessError) {
-      showToast({ message: error.businessMessage, position: 'top' });
-    }
-    console.error('退出登录失败:', error);
+    const msg = error.businessMessage || error.httpMessage || '退出登录失败';
+    showDialog({ title: '提示', message: msg });
   }
 }
 
@@ -326,7 +319,7 @@ function formatTime(time) {
 
 function goToChat(bottle) {
   if (bottle.status !== 'replied') {
-    showToast({ message: bottle.status === 'picked' ? '瓶子已被捡起，等待对方回复' : '瓶子还在海里，等待被捞取', position: 'top' });
+    showDialog({ title: '提示', message: bottle.status === 'picked' ? '瓶子已被捡起，等待对方回复' : '瓶子还在海里，等待被捞取' });
     return;
   }
   router.push(`/chat/${bottle.id}`);
