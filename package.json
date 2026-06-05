@@ -1,0 +1,14 @@
+{
+  "name": "drift-bottle",
+  "version": "1.0.0",
+  "description": "漂流瓶项目 - 匿名社交应用",
+  "scripts": {
+    "install:all": "cd server && npm install && cd ../client && npm install",
+    "dev:server": "cd server && npm run dev",
+    "dev:client": "cd client && npm run dev",
+    "build": "cd client && npm run build"
+  },
+  "keywords": ["drift-bottle", "vue3", "nodejs"],
+  "author": "",
+  "license": "MIT"
+}
