@@ -3,6 +3,20 @@ const router = express.Router();
 const pool = require('../config/db');
 const { generateUUID, generateResponse } = require('../utils/helper');
 
+async function ensureDailyStat(userId, date) {
+  const [rows] = await pool.execute(
+    'SELECT id FROM daily_stats WHERE user_id = ? AND stat_date = ?',
+    [userId, date]
+  );
+  if (rows.length === 0) {
+    const id = generateUUID();
+    await pool.execute(
+      'INSERT INTO daily_stats (id, user_id, stat_date, usage_seconds, throw_count, pick_count) VALUES (?, ?, ?, 0, 0, 0)',
+      [id, userId, date]
+    );
+  }
+}
+
 router.post('/throw', async (req, res) => {
   try {
     const { content } = req.body;
@@ -17,6 +31,13 @@ router.post('/throw', async (req, res) => {
     await pool.execute(
       'INSERT INTO bottles (id, sender_id, content, status) VALUES (?, ?, ?, ?)',
       [bottleId, senderId, content.trim(), 'floating']
+    );
+
+    const today = new Date().toISOString().split('T')[0];
+    await ensureDailyStat(senderId, today);
+    await pool.execute(
+      'UPDATE daily_stats SET throw_count = throw_count + 1 WHERE user_id = ? AND stat_date = ?',
+      [senderId, today]
     );
 
     res.json(generateResponse(true, {
@@ -51,6 +72,13 @@ router.post('/pick', async (req, res) => {
     await pool.execute(
       'UPDATE bottles SET status = ?, picker_id = ?, picked_at = NOW() WHERE id = ?',
       ['picked', pickerId, bottle.id]
+    );
+
+    const today = new Date().toISOString().split('T')[0];
+    await ensureDailyStat(pickerId, today);
+    await pool.execute(
+      'UPDATE daily_stats SET pick_count = pick_count + 1 WHERE user_id = ? AND stat_date = ?',
+      [pickerId, today]
     );
 
     res.json(generateResponse(true, {

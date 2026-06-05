@@ -49,6 +49,12 @@ const routes = [
     name: 'EditProfile',
     component: () => import('../views/EditProfile.vue'),
     meta: { title: '编辑资料', requiresAuth: true }
+  },
+  {
+    path: '/welfare',
+    name: 'Welfare',
+    component: () => import('../views/Welfare.vue'),
+    meta: { title: '福利', requiresAuth: true }
   }
 ];
 

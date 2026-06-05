@@ -7,6 +7,7 @@ require('dotenv').config();
 const { router: userRoutes, authenticateToken } = require('./routes/user');
 const bottleRoutes = require('./routes/bottle');
 const messageRoutes = require('./routes/message');
+const welfareRoutes = require('./routes/welfare');
 
 const app = express();
 const PORT = process.env.PORT || 4022;
@@ -19,6 +20,7 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 app.use('/api/user', userRoutes);
 app.use('/api/bottle', authenticateToken, bottleRoutes);
 app.use('/api/message', authenticateToken, messageRoutes);
+app.use('/api/welfare', authenticateToken, welfareRoutes);
 
 app.get('/api/health', (req, res) => {
   res.json({

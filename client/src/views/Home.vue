@@ -54,6 +54,7 @@
 
     <van-tabbar v-model="active" active-color="#1989fa">
       <van-tabbar-item name="home" icon="home-o">首页</van-tabbar-item>
+      <van-tabbar-item name="welfare" icon="gift-o" @click="goToWelfare">福利</van-tabbar-item>
       <van-tabbar-item name="my" icon="user-o">我的</van-tabbar-item>
     </van-tabbar>
   </div>
@@ -106,6 +107,10 @@ function goToPick() {
 
 function goToMy() {
   router.push('/my');
+}
+
+function goToWelfare() {
+  router.push('/welfare');
 }
 
 watch(active, (newVal) => {

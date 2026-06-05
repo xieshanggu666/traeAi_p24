@@ -152,6 +152,7 @@
 
     <van-tabbar v-model="activeBottom" active-color="#1989fa">
       <van-tabbar-item name="home" icon="home-o" @click="goToHome">首页</van-tabbar-item>
+      <van-tabbar-item name="welfare" icon="gift-o" @click="goToWelfare">福利</van-tabbar-item>
       <van-tabbar-item name="my" icon="user-o">我的</van-tabbar-item>
     </van-tabbar>
   </div>
@@ -325,6 +326,10 @@ function goToChat(bottle) {
 
 function goToHome() {
   router.push('/');
+}
+
+function goToWelfare() {
+  router.push('/welfare');
 }
 
 function goToThrow() {

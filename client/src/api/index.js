@@ -70,3 +70,35 @@ export const deleteBottle = (bottleId) => {
 export const softDeleteBottle = (bottleId) => {
   return request.post(`/bottle/soft-delete/${bottleId}`);
 };
+
+export const getWelfareInfo = () => {
+  return request.get('/welfare/info');
+};
+
+export const getCoinRecords = (page = 1, pageSize = 20) => {
+  return request.get('/welfare/records', { params: { page, pageSize } });
+};
+
+export const checkin = () => {
+  return request.post('/welfare/checkin');
+};
+
+export const getCheckinStatus = (year, month) => {
+  return request.get('/welfare/checkin-status', { params: { year, month } });
+};
+
+export const claimGift = (giftDays) => {
+  return request.post('/welfare/claim-gift', { giftDays });
+};
+
+export const getTasks = () => {
+  return request.get('/welfare/tasks');
+};
+
+export const claimTask = (taskKey) => {
+  return request.post('/welfare/claim-task', { taskKey });
+};
+
+export const reportUsage = (seconds) => {
+  return request.post('/welfare/report-usage', { seconds });
+};
