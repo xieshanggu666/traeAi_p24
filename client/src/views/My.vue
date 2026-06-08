@@ -5,8 +5,15 @@
       <div class="user-card">
         <AvatarDisplay :avatar="user?.avatar" :size="70" class="user-avatar" />
         <div class="user-info">
-          <div class="user-nickname">{{ user?.nickname }}</div>
-          <div class="user-username">账号: {{ user?.username }}</div>
+          <div class="user-nickname-row">
+            <span class="user-nickname">{{ user?.nickname }}</span>
+            <span class="gender-icon" v-if="user?.gender === '男'">♂</span>
+            <span class="gender-icon gender-female" v-else-if="user?.gender === '女'">♀</span>
+            <span class="gender-icon gender-secret" v-else-if="user?.gender === '保密'">🔒</span>
+            <span class="user-age" v-if="computedAge">{{ computedAge }}</span>
+          </div>
+          <div class="user-bio" v-if="user?.bio">{{ user.bio }}</div>
+          <div class="user-no-bio" v-else>还没有个人介绍</div>
         </div>
       </div>
     </div>
@@ -46,7 +53,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, watch } from 'vue';
+import { ref, computed, onMounted, watch } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import { showToast } from 'vant';
 import { getUser, clearAuth, setUser } from '../utils/storage';
@@ -57,6 +64,18 @@ const router = useRouter();
 const route = useRoute();
 const user = ref(null);
 const activeBottom = ref('my');
+
+const computedAge = computed(() => {
+  if (!user.value?.birthday) return '';
+  const birthday = new Date(user.value.birthday);
+  const today = new Date();
+  let age = today.getFullYear() - birthday.getFullYear();
+  const monthDiff = today.getMonth() - birthday.getMonth();
+  if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthday.getDate())) {
+    age--;
+  }
+  return age >= 0 ? `${age}岁` : '';
+});
 
 onMounted(() => {
   user.value = getUser();
@@ -149,16 +168,55 @@ function goToMessages() { router.push('/messages'); }
   flex: 1;
 }
 
+.user-nickname-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
 .user-nickname {
   font-size: 20px;
   font-weight: bold;
   color: #333;
-  margin-bottom: 4px;
 }
 
-.user-username {
+.gender-icon {
+  font-size: 16px;
+  color: #4a9eff;
+  font-weight: bold;
+}
+
+.gender-female {
+  color: #ff6b9d;
+}
+
+.gender-secret {
   font-size: 13px;
   color: #999;
+}
+
+.user-age {
+  font-size: 12px;
+  color: #fff;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  padding: 1px 8px;
+  border-radius: 10px;
+}
+
+.user-bio {
+  font-size: 13px;
+  color: #666;
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.user-no-bio {
+  font-size: 13px;
+  color: #bbb;
 }
 
 .content {

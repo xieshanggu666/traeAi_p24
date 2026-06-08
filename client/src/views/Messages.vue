@@ -8,75 +8,77 @@
     </div>
 
     <van-pull-refresh v-model="refreshing" @refresh="onRefresh">
-      <div class="section" v-if="repliedBottles.length > 0 || loading">
-        <div class="section-header">
-          <span class="section-title">待回复消息</span>
-          <span class="section-count" v-if="repliedBottles.length > 0">{{ repliedBottles.length }}</span>
-        </div>
-        <div class="section-list">
-          <van-swipe-cell v-for="bottle in repliedBottles" :key="bottle.id">
-            <div class="msg-card msg-card-active" @click="goToChat(bottle)">
-              <div class="msg-avatar">
-                <AvatarDisplay :avatar="bottle.other_avatar" :size="46" />
-                <span class="unread-dot" v-if="bottle.unread_count > 0 && bottle.latest_sender_id !== currentUserId"></span>
-              </div>
-              <div class="msg-body">
-                <div class="msg-top-row">
-                  <span class="msg-name">{{ bottle.other_nickname }}</span>
-                  <span class="msg-time">{{ formatTime(bottle.latest_message_time || bottle.created_at) }}</span>
+      <van-tabs v-model:active="activeTab" sticky offset-top="84" lazy-render>
+        <van-tab title="待回复" :badge="repliedBottles.length > 0 ? repliedBottles.length : ''">
+          <div class="section" v-if="repliedBottles.length > 0 || loading">
+            <div class="section-list">
+              <van-swipe-cell v-for="bottle in repliedBottles" :key="bottle.id">
+                <div class="msg-card msg-card-active" @click="goToChat(bottle)">
+                  <div class="msg-avatar">
+                    <AvatarDisplay :avatar="bottle.other_avatar" :size="46" />
+                    <span class="unread-dot" v-if="bottle.unread_count > 0 && bottle.latest_sender_id !== currentUserId"></span>
+                  </div>
+                  <div class="msg-body">
+                    <div class="msg-top-row">
+                      <span class="msg-name">{{ bottle.other_nickname }}</span>
+                      <span class="msg-time">{{ formatTime(bottle.latest_message_time || bottle.created_at) }}</span>
+                    </div>
+                    <div class="msg-bottom-row">
+                      <span class="msg-preview">
+                        <span v-if="bottle.latest_sender_id === currentUserId" class="prefix-self">我: </span>
+                        {{ bottle.latest_message || bottle.content }}
+                      </span>
+                      <span class="msg-unread" v-if="bottle.unread_count > 0 && bottle.latest_sender_id !== currentUserId">
+                        {{ bottle.unread_count > 99 ? '99+' : bottle.unread_count }}
+                      </span>
+                    </div>
+                  </div>
                 </div>
-                <div class="msg-bottom-row">
-                  <span class="msg-preview">
-                    <span v-if="bottle.latest_sender_id === currentUserId" class="prefix-self">我: </span>
-                    {{ bottle.latest_message || bottle.content }}
-                  </span>
-                  <span class="msg-unread" v-if="bottle.unread_count > 0 && bottle.latest_sender_id !== currentUserId">
-                    {{ bottle.unread_count > 99 ? '99+' : bottle.unread_count }}
-                  </span>
-                </div>
-              </div>
+                <template #right>
+                  <van-button square type="danger" class="swipe-delete" text="删除" @click="handleDelete(bottle)" />
+                </template>
+              </van-swipe-cell>
             </div>
-            <template #right>
-              <van-button square type="danger" class="swipe-delete" text="删除" @click="handleDelete(bottle)" />
-            </template>
-          </van-swipe-cell>
-        </div>
-      </div>
+          </div>
+          <div class="empty-state" v-if="repliedBottles.length === 0 && !loading && !fetchError">
+            <div class="empty-icon">📭</div>
+            <div class="empty-text">暂无待回复消息</div>
+            <div class="empty-desc">捞个瓶子开始聊天吧</div>
+          </div>
+        </van-tab>
 
-      <div class="section" v-if="sentBottles.length > 0 || (repliedBottles.length === 0 && !loading)">
-        <div class="section-header">
-          <span class="section-title">我的发起</span>
-          <span class="section-count" v-if="sentBottles.length > 0">{{ sentBottles.length }}</span>
-        </div>
-        <div class="section-list">
-          <van-swipe-cell v-for="bottle in sentBottles" :key="bottle.id">
-            <div class="msg-card" @click="handleSentClick(bottle)">
-              <div class="msg-avatar">
-                <AvatarDisplay :avatar="bottle.other_avatar" :size="46" />
-              </div>
-              <div class="msg-body">
-                <div class="msg-top-row">
-                  <span class="msg-name">{{ bottle.other_nickname }}</span>
-                  <span class="msg-badge" :class="'badge-' + bottle.status">{{ getStatusText(bottle) }}</span>
-                  <span class="msg-time">{{ formatTime(bottle.created_at) }}</span>
+        <van-tab title="我的发起" :badge="sentBottles.length > 0 ? sentBottles.length : ''">
+          <div class="section" v-if="sentBottles.length > 0 || loading">
+            <div class="section-list">
+              <van-swipe-cell v-for="bottle in sentBottles" :key="bottle.id">
+                <div class="msg-card" @click="handleSentClick(bottle)">
+                  <div class="msg-avatar">
+                    <AvatarDisplay :avatar="bottle.other_avatar" :size="46" />
+                  </div>
+                  <div class="msg-body">
+                    <div class="msg-top-row">
+                      <span class="msg-name">{{ bottle.other_nickname }}</span>
+                      <span class="msg-badge" :class="'badge-' + bottle.status">{{ getStatusText(bottle) }}</span>
+                      <span class="msg-time">{{ formatTime(bottle.created_at) }}</span>
+                    </div>
+                    <div class="msg-bottom-row">
+                      <span class="msg-preview">{{ bottle.content }}</span>
+                    </div>
+                  </div>
                 </div>
-                <div class="msg-bottom-row">
-                  <span class="msg-preview">{{ bottle.content }}</span>
-                </div>
-              </div>
+                <template #right>
+                  <van-button square type="danger" class="swipe-delete" text="删除" @click="handleDelete(bottle)" />
+                </template>
+              </van-swipe-cell>
             </div>
-            <template #right>
-              <van-button square type="danger" class="swipe-delete" text="删除" @click="handleDelete(bottle)" />
-            </template>
-          </van-swipe-cell>
-        </div>
-      </div>
-
-      <div class="empty-state" v-if="allBottles.length === 0 && !loading && !fetchError">
-        <div class="empty-icon">📭</div>
-        <div class="empty-text">还没有消息</div>
-        <div class="empty-desc">扔个瓶子或捞个瓶子开始吧</div>
-      </div>
+          </div>
+          <div class="empty-state" v-if="sentBottles.length === 0 && !loading && !fetchError">
+            <div class="empty-icon">🍾</div>
+            <div class="empty-text">还没有发起过瓶子</div>
+            <div class="empty-desc">扔个瓶子开始吧</div>
+          </div>
+        </van-tab>
+      </van-tabs>
 
       <div class="error-state" v-if="fetchError && !loading">
         <div class="error-icon">⚠️</div>
@@ -109,6 +111,7 @@ const router = useRouter();
 const route = useRoute();
 const user = ref(null);
 const activeBottom = ref('messages');
+const activeTab = ref(0);
 const allBottles = ref([]);
 const loading = ref(false);
 const refreshing = ref(false);
@@ -300,28 +303,7 @@ function goToMy() { router.push('/my'); }
 }
 
 .section {
-  margin: 0 16px 16px;
-}
-
-.section-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 16px 4px 8px;
-}
-
-.section-title {
-  font-size: 15px;
-  font-weight: bold;
-  color: #333;
-}
-
-.section-count {
-  font-size: 12px;
-  background: #667eea20;
-  color: #667eea;
-  padding: 1px 8px;
-  border-radius: 10px;
+  margin: 8px 16px 16px;
 }
 
 .section-list {

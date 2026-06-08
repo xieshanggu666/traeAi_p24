@@ -9,6 +9,15 @@
     />
 
     <div class="form-section">
+      <div class="section-label">账号信息</div>
+      <van-cell
+        title="账号"
+        :value="form.username"
+      />
+    </div>
+
+    <div class="form-section">
+      <div class="section-label">个人资料</div>
       <div class="avatar-section" @click="showAvatarPicker = true">
         <div class="avatar-label">头像</div>
         <div class="avatar-right">
@@ -200,6 +209,7 @@ const genderColumns = [
 ];
 
 const form = ref({
+  username: '',
   nickname: '',
   avatar: '🐱',
   gender: '',
@@ -237,6 +247,7 @@ onMounted(async () => {
   if (localUser) {
     form.value.nickname = localUser.nickname || '';
     form.value.avatar = localUser.avatar || '🐱';
+    form.value.username = localUser.username || '';
   }
 
   try {
@@ -246,6 +257,7 @@ onMounted(async () => {
     form.value.gender = userInfo.gender || '';
     form.value.birthday = userInfo.birthday ? formatDate(userInfo.birthday) : '';
     form.value.bio = userInfo.bio || '';
+    form.value.username = userInfo.username || '';
 
     if (userInfo.birthday) {
       const d = new Date(userInfo.birthday);
@@ -400,6 +412,12 @@ function goBack() {
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
 }
 
+.section-label {
+  font-size: 12px;
+  color: #999;
+  padding: 12px 16px 0;
+}
+
 .avatar-section {
   display: flex;
   align-items: center;
@@ -425,7 +443,7 @@ function goBack() {
 }
 
 .save-section {
-  margin: 32px 16px;
+  margin: 24px 16px;
 }
 
 .avatar-picker {
