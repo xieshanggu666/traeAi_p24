@@ -8,56 +8,32 @@
           <div class="user-nickname">{{ user?.nickname }}</div>
           <div class="user-username">账号: {{ user?.username }}</div>
         </div>
-        <van-button
-          type="danger"
-          size="small"
-          plain
-          class="logout-btn"
-          @click="handleLogout"
-        >
-          退出登录
-        </van-button>
-      </div>
-      <div class="profile-entry" @click="goToEditProfile">
-        <van-icon name="edit" size="14" />
-        <span>编辑资料</span>
       </div>
     </div>
 
     <div class="content">
-      <div class="quick-entry" @click="goToMessages">
-        <div class="entry-left">
-          <span class="entry-icon">💬</span>
-          <div class="entry-info">
-            <div class="entry-title">我的消息</div>
-            <div class="entry-desc">查看所有瓶子与对话</div>
-          </div>
+      <div class="action-list">
+        <div class="action-item" @click="goToEditProfile">
+          <van-icon name="edit" size="20" color="#667eea" />
+          <span class="action-text">编辑资料</span>
+          <van-icon name="arrow" size="14" color="#ccc" />
         </div>
-        <div class="entry-right">
-          <van-badge :content="totalUnread" v-if="totalUnread > 0">
-            <van-icon name="arrow" size="16" color="#999" />
-          </van-badge>
-          <van-icon v-else name="arrow" size="16" color="#999" />
+        <div class="action-item" @click="goToWelfare">
+          <van-icon name="gift-o" size="20" color="#ff976a" />
+          <span class="action-text">每日福利</span>
+          <van-icon name="arrow" size="14" color="#ccc" />
         </div>
       </div>
 
-      <div class="function-list">
-        <div class="function-item" @click="goToThrow">
-          <span class="function-icon">🍾</span>
-          <span class="function-text">扔瓶子</span>
-          <van-icon name="arrow" size="14" color="#ccc" />
-        </div>
-        <div class="function-item" @click="goToPick">
-          <span class="function-icon">🥅</span>
-          <span class="function-text">捞瓶子</span>
-          <van-icon name="arrow" size="14" color="#ccc" />
-        </div>
-        <div class="function-item" @click="goToWelfare">
-          <span class="function-icon">🎁</span>
-          <span class="function-text">每日福利</span>
-          <van-icon name="arrow" size="14" color="#ccc" />
-        </div>
-      </div>
+      <van-button
+        type="danger"
+        plain
+        block
+        class="logout-btn"
+        @click="handleLogout"
+      >
+        退出登录
+      </van-button>
     </div>
 
     <van-tabbar v-model="activeBottom" active-color="#1989fa">
@@ -74,23 +50,19 @@ import { ref, onMounted, watch } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import { showToast } from 'vant';
 import { getUser, clearAuth, setUser } from '../utils/storage';
-import { logout, getUserInfo, getUnreadCount } from '../api';
+import { logout, getUserInfo } from '../api';
 import AvatarDisplay from '../components/AvatarDisplay.vue';
 
 const router = useRouter();
 const route = useRoute();
 const user = ref(null);
 const activeBottom = ref('my');
-const totalUnread = ref(0);
-let timer = null;
 
 onMounted(() => {
   user.value = getUser();
   if (user.value) {
     refreshUserInfo();
-    fetchUnreadCount();
   }
-  timer = setInterval(fetchUnreadCount, 10000);
 });
 
 watch(
@@ -98,19 +70,9 @@ watch(
   () => {
     if (route.path === '/my' && user.value) {
       refreshUserInfo();
-      fetchUnreadCount();
     }
   }
 );
-
-async function fetchUnreadCount() {
-  try {
-    const result = await getUnreadCount();
-    totalUnread.value = result.unreadCount;
-  } catch (error) {
-    console.error('获取未读消息数失败:', error);
-  }
-}
 
 async function refreshUserInfo() {
   try {
@@ -135,29 +97,10 @@ async function handleLogout() {
   }
 }
 
-function goToHome() {
-  router.push('/');
-}
-
-function goToWelfare() {
-  router.push('/welfare');
-}
-
-function goToThrow() {
-  router.push('/throw');
-}
-
-function goToPick() {
-  router.push('/pick');
-}
-
-function goToEditProfile() {
-  router.push('/edit-profile');
-}
-
-function goToMessages() {
-  router.push('/messages');
-}
+function goToHome() { router.push('/'); }
+function goToWelfare() { router.push('/welfare'); }
+function goToEditProfile() { router.push('/edit-profile'); }
+function goToMessages() { router.push('/messages'); }
 </script>
 
 <style scoped>
@@ -188,7 +131,7 @@ function goToMessages() {
   display: flex;
   align-items: center;
   gap: 16px;
-  padding: 20px;
+  padding: 24px 20px;
   margin: 0 16px;
   background: rgba(255, 255, 255, 0.95);
   border-radius: 16px;
@@ -218,95 +161,19 @@ function goToMessages() {
   color: #999;
 }
 
-.logout-btn {
-  border-radius: 16px;
-}
-
-.profile-entry {
-  position: relative;
-  z-index: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  margin: 12px 16px 0;
-  padding: 10px;
-  background: rgba(255, 255, 255, 0.95);
-  border-radius: 10px;
-  color: #1989fa;
-  font-size: 14px;
-  font-weight: 500;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
-  cursor: pointer;
-  transition: background 0.2s;
-}
-
-.profile-entry:active {
-  background: #f0f7ff;
-}
-
 .content {
-  margin-top: 16px;
+  margin-top: 20px;
   padding: 0 16px;
 }
 
-.quick-entry {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 16px 20px;
-  background: rgba(255, 255, 255, 0.95);
-  border-radius: 16px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
-  cursor: pointer;
-  transition: transform 0.2s;
-}
-
-.quick-entry:active {
-  transform: scale(0.98);
-}
-
-.entry-left {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-}
-
-.entry-icon {
-  font-size: 36px;
-}
-
-.entry-info {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.entry-title {
-  font-size: 16px;
-  font-weight: bold;
-  color: #333;
-}
-
-.entry-desc {
-  font-size: 12px;
-  color: #999;
-}
-
-.entry-right {
-  display: flex;
-  align-items: center;
-}
-
-.function-list {
-  margin-top: 16px;
+.action-list {
   background: rgba(255, 255, 255, 0.95);
   border-radius: 16px;
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
   overflow: hidden;
 }
 
-.function-item {
+.action-item {
   display: flex;
   align-items: center;
   padding: 16px 20px;
@@ -315,22 +182,23 @@ function goToMessages() {
   transition: background 0.2s;
 }
 
-.function-item:last-child {
+.action-item:last-child {
   border-bottom: none;
 }
 
-.function-item:active {
+.action-item:active {
   background: #f9f9f9;
 }
 
-.function-icon {
-  font-size: 22px;
-  margin-right: 14px;
-}
-
-.function-text {
+.action-text {
   flex: 1;
   font-size: 15px;
   color: #333;
+  margin-left: 14px;
+}
+
+.logout-btn {
+  margin-top: 24px;
+  border-radius: 12px;
 }
 </style>

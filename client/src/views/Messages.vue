@@ -4,136 +4,88 @@
       <div class="header-bg"></div>
       <div class="header-content">
         <h2 class="page-title">💬 消息</h2>
-        <p class="page-desc">我的瓶子与对话</p>
-      </div>
-    </div>
-
-    <div class="filter-tabs">
-      <div
-        class="filter-tab"
-        :class="{ active: activeFilter === 'all' }"
-        @click="activeFilter = 'all'"
-      >
-        全部
-        <span class="tab-count" v-if="allBottles.length > 0">{{ allBottles.length }}</span>
-      </div>
-      <div
-        class="filter-tab"
-        :class="{ active: activeFilter === 'replied' }"
-        @click="activeFilter = 'replied'"
-      >
-        对话中
-        <span class="tab-count" v-if="repliedBottles.length > 0">{{ repliedBottles.length }}</span>
-      </div>
-      <div
-        class="filter-tab"
-        :class="{ active: activeFilter === 'waiting' }"
-        @click="activeFilter = 'waiting'"
-      >
-        等待中
-        <span class="tab-count" v-if="waitingBottles.length > 0">{{ waitingBottles.length }}</span>
       </div>
     </div>
 
     <van-pull-refresh v-model="refreshing" @refresh="onRefresh">
-      <div class="message-list">
-        <van-swipe-cell
-          v-for="bottle in filteredBottles"
-          :key="bottle.id"
-        >
-          <div
-            class="message-item"
-            :class="{ 'message-item-replied': bottle.status === 'replied' }"
-            @click="handleBottleClick(bottle)"
-          >
-            <div class="message-item-header">
-              <div class="avatar-wrapper">
-                <AvatarDisplay :avatar="bottle.other_avatar" :size="48" />
-                <span
-                  class="unread-dot"
-                  v-if="bottle.unread_count > 0 && bottle.latest_sender_id !== currentUserId"
-                ></span>
+      <div class="section" v-if="repliedBottles.length > 0 || loading">
+        <div class="section-header">
+          <span class="section-title">待回复消息</span>
+          <span class="section-count" v-if="repliedBottles.length > 0">{{ repliedBottles.length }}</span>
+        </div>
+        <div class="section-list">
+          <van-swipe-cell v-for="bottle in repliedBottles" :key="bottle.id">
+            <div class="msg-card msg-card-active" @click="goToChat(bottle)">
+              <div class="msg-avatar">
+                <AvatarDisplay :avatar="bottle.other_avatar" :size="46" />
+                <span class="unread-dot" v-if="bottle.unread_count > 0 && bottle.latest_sender_id !== currentUserId"></span>
               </div>
-              <div class="message-user-info">
-                <div class="message-nickname-row">
-                  <span class="message-nickname">{{ bottle.other_nickname }}</span>
-                  <span class="status-tag" :class="getStatusClass(bottle)">
-                    {{ getStatusText(bottle) }}
+              <div class="msg-body">
+                <div class="msg-top-row">
+                  <span class="msg-name">{{ bottle.other_nickname }}</span>
+                  <span class="msg-time">{{ formatTime(bottle.latest_message_time || bottle.created_at) }}</span>
+                </div>
+                <div class="msg-bottom-row">
+                  <span class="msg-preview">
+                    <span v-if="bottle.latest_sender_id === currentUserId" class="prefix-self">我: </span>
+                    {{ bottle.latest_message || bottle.content }}
+                  </span>
+                  <span class="msg-unread" v-if="bottle.unread_count > 0 && bottle.latest_sender_id !== currentUserId">
+                    {{ bottle.unread_count > 99 ? '99+' : bottle.unread_count }}
                   </span>
                 </div>
-                <div class="message-preview">
-                  <template v-if="bottle.latest_message">
-                    <span v-if="bottle.latest_sender_id === currentUserId" class="preview-prefix">我: </span>
-                    <span>{{ bottle.latest_message }}</span>
-                  </template>
-                  <template v-else-if="bottle.status === 'picked'">
-                    <span class="preview-bottle-content">对方捡到了你的瓶子：</span>{{ bottle.content }}
-                  </template>
-                  <template v-else-if="bottle.status === 'floating'">
-                    <span class="preview-bottle-content">瓶子内容：</span>{{ bottle.content }}
-                  </template>
-                  <template v-else>
-                    <span class="preview-bottle-content">瓶子内容：</span>{{ bottle.content }}
-                  </template>
-                </div>
-              </div>
-              <div class="message-meta">
-                <div class="message-time">{{ formatTime(bottle.latest_message_time || bottle.created_at) }}</div>
-                <div class="unread-badge" v-if="bottle.unread_count > 0 && bottle.latest_sender_id !== currentUserId">
-                  {{ bottle.unread_count > 99 ? '99+' : bottle.unread_count }}
-                </div>
-                <div class="type-badge" v-if="bottle.type === 'sent'">发出</div>
-                <div class="type-badge received" v-else>收到</div>
               </div>
             </div>
-          </div>
-          <template #right>
-            <van-button
-              square
-              type="danger"
-              class="delete-btn"
-              text="删除"
-              @click="handleDelete(bottle)"
-            />
-          </template>
-        </van-swipe-cell>
-
-        <div class="empty-state" v-if="filteredBottles.length === 0 && !loading && !fetchError">
-          <div class="empty-icon">📭</div>
-          <div class="empty-text" v-if="activeFilter === 'all'">还没有瓶子</div>
-          <div class="empty-text" v-else-if="activeFilter === 'replied'">没有进行中的对话</div>
-          <div class="empty-text" v-else>没有等待中的瓶子</div>
-          <div class="empty-desc" v-if="activeFilter === 'all'">扔个瓶子或捞个瓶子开始吧</div>
-          <div class="empty-desc" v-else>切换到"全部"查看所有瓶子</div>
-          <van-button
-            type="primary"
-            size="small"
-            style="margin-top: 20px;"
-            @click="goToHome"
-            v-if="activeFilter === 'all'"
-          >
-            去扔瓶子
-          </van-button>
+            <template #right>
+              <van-button square type="danger" class="swipe-delete" text="删除" @click="handleDelete(bottle)" />
+            </template>
+          </van-swipe-cell>
         </div>
-
-        <div class="error-state" v-if="fetchError && !loading">
-          <div class="error-icon">⚠️</div>
-          <div class="error-text">加载失败</div>
-          <div class="error-desc">{{ fetchError }}</div>
-          <van-button
-            type="primary"
-            size="small"
-            style="margin-top: 16px;"
-            @click="fetchBottles"
-          >
-            重新加载
-          </van-button>
-        </div>
-
-        <van-loading v-if="loading" color="#1989fa" style="margin-top: 40px; display: block; text-align: center;">
-          加载中...
-        </van-loading>
       </div>
+
+      <div class="section" v-if="sentBottles.length > 0 || (repliedBottles.length === 0 && !loading)">
+        <div class="section-header">
+          <span class="section-title">我的发起</span>
+          <span class="section-count" v-if="sentBottles.length > 0">{{ sentBottles.length }}</span>
+        </div>
+        <div class="section-list">
+          <van-swipe-cell v-for="bottle in sentBottles" :key="bottle.id">
+            <div class="msg-card" @click="handleSentClick(bottle)">
+              <div class="msg-avatar">
+                <AvatarDisplay :avatar="bottle.other_avatar" :size="46" />
+              </div>
+              <div class="msg-body">
+                <div class="msg-top-row">
+                  <span class="msg-name">{{ bottle.other_nickname }}</span>
+                  <span class="msg-badge" :class="'badge-' + bottle.status">{{ getStatusText(bottle) }}</span>
+                  <span class="msg-time">{{ formatTime(bottle.created_at) }}</span>
+                </div>
+                <div class="msg-bottom-row">
+                  <span class="msg-preview">{{ bottle.content }}</span>
+                </div>
+              </div>
+            </div>
+            <template #right>
+              <van-button square type="danger" class="swipe-delete" text="删除" @click="handleDelete(bottle)" />
+            </template>
+          </van-swipe-cell>
+        </div>
+      </div>
+
+      <div class="empty-state" v-if="allBottles.length === 0 && !loading && !fetchError">
+        <div class="empty-icon">📭</div>
+        <div class="empty-text">还没有消息</div>
+        <div class="empty-desc">扔个瓶子或捞个瓶子开始吧</div>
+      </div>
+
+      <div class="error-state" v-if="fetchError && !loading">
+        <div class="error-icon">⚠️</div>
+        <div class="error-text">加载失败</div>
+        <div class="error-desc">{{ fetchError }}</div>
+        <van-button type="primary" size="small" style="margin-top: 16px;" @click="fetchBottles">重新加载</van-button>
+      </div>
+
+      <van-loading v-if="loading" color="#1989fa" style="margin-top: 40px; display: block; text-align: center;">加载中...</van-loading>
     </van-pull-refresh>
 
     <van-tabbar v-model="activeBottom" active-color="#1989fa">
@@ -157,7 +109,6 @@ const router = useRouter();
 const route = useRoute();
 const user = ref(null);
 const activeBottom = ref('messages');
-const activeFilter = ref('all');
 const allBottles = ref([]);
 const loading = ref(false);
 const refreshing = ref(false);
@@ -168,22 +119,23 @@ let timer = null;
 const currentUserId = computed(() => user.value?.id);
 
 const repliedBottles = computed(() => {
-  return allBottles.value.filter(b => b.status === 'replied');
+  return allBottles.value
+    .filter(b => b.status === 'replied')
+    .sort((a, b) => {
+      const aHasUnread = a.unread_count > 0 && a.latest_sender_id !== currentUserId.value;
+      const bHasUnread = b.unread_count > 0 && b.latest_sender_id !== currentUserId.value;
+      if (aHasUnread && !bHasUnread) return -1;
+      if (!aHasUnread && bHasUnread) return 1;
+      const aTime = a.latest_message_time ? new Date(a.latest_message_time) : new Date(a.created_at);
+      const bTime = b.latest_message_time ? new Date(b.latest_message_time) : new Date(b.created_at);
+      return bTime - aTime;
+    });
 });
 
-const waitingBottles = computed(() => {
-  return allBottles.value.filter(b => b.status !== 'replied');
-});
-
-const filteredBottles = computed(() => {
-  switch (activeFilter.value) {
-    case 'replied':
-      return repliedBottles.value;
-    case 'waiting':
-      return waitingBottles.value;
-    default:
-      return allBottles.value;
-  }
+const sentBottles = computed(() => {
+  return allBottles.value
+    .filter(b => b.type === 'sent')
+    .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 });
 
 onMounted(() => {
@@ -218,32 +170,14 @@ async function fetchUnreadCount() {
   }
 }
 
-function sortBottles(bottles) {
-  return bottles.sort((a, b) => {
-    const aHasUnread = a.unread_count > 0 && a.latest_sender_id !== currentUserId.value;
-    const bHasUnread = b.unread_count > 0 && b.latest_sender_id !== currentUserId.value;
-    if (aHasUnread && !bHasUnread) return -1;
-    if (!aHasUnread && bHasUnread) return 1;
-    const aIsReplied = a.status === 'replied';
-    const bIsReplied = b.status === 'replied';
-    if (aIsReplied && !bIsReplied) return -1;
-    if (!aIsReplied && bIsReplied) return 1;
-    const aTime = a.latest_message_time ? new Date(a.latest_message_time) : new Date(a.created_at);
-    const bTime = b.latest_message_time ? new Date(b.latest_message_time) : new Date(b.created_at);
-    return bTime - aTime;
-  });
-}
-
 async function fetchBottles() {
   loading.value = true;
   fetchError.value = null;
   try {
     const result = await getMyBottles();
-    const previousData = [...allBottles.value];
-    allBottles.value = sortBottles(result);
+    allBottles.value = result;
   } catch (error) {
     fetchError.value = error.businessMessage || error.httpMessage || '网络异常，请稍后重试';
-    console.error('获取消息列表失败:', error);
   } finally {
     loading.value = false;
   }
@@ -253,11 +187,10 @@ async function onRefresh() {
   fetchError.value = null;
   try {
     const result = await getMyBottles();
-    allBottles.value = sortBottles(result);
+    allBottles.value = result;
     await fetchUnreadCount();
   } catch (error) {
     fetchError.value = error.businessMessage || error.httpMessage || '刷新失败，请重试';
-    console.error('刷新失败:', error);
   } finally {
     refreshing.value = false;
   }
@@ -273,9 +206,7 @@ async function handleDelete(bottle) {
       cancelButtonText: '取消',
       confirmButtonColor: '#ff4d4f'
     });
-
     const previousBottles = [...allBottles.value];
-
     try {
       if (bottle.type === 'sent') {
         await deleteBottle(bottle.id);
@@ -290,16 +221,7 @@ async function handleDelete(bottle) {
       showToast(error.businessMessage || error.httpMessage || '删除失败，请重试');
     }
   } catch {
-    // User cancelled dialog
-  }
-}
-
-function getStatusClass(bottle) {
-  switch (bottle.status) {
-    case 'replied': return 'status-replied';
-    case 'picked': return 'status-picked';
-    case 'floating': return 'status-floating';
-    default: return 'status-floating';
+    // cancelled
   }
 }
 
@@ -308,7 +230,7 @@ function getStatusText(bottle) {
     case 'replied': return '对话中';
     case 'picked': return '已捡起';
     case 'floating': return '漂流中';
-    default: return '未知';
+    default: return '';
   }
 }
 
@@ -317,7 +239,6 @@ function formatTime(time) {
   const date = new Date(time);
   const now = new Date();
   const diff = now - date;
-
   if (diff < 60000) return '刚刚';
   if (diff < 3600000) return `${Math.floor(diff / 60000)}分钟前`;
   if (diff < 86400000) return `${Math.floor(diff / 3600000)}小时前`;
@@ -325,7 +246,11 @@ function formatTime(time) {
   return `${Math.floor(diff / 86400000)}天前`;
 }
 
-function handleBottleClick(bottle) {
+function goToChat(bottle) {
+  router.push(`/chat/${bottle.id}`);
+}
+
+function handleSentClick(bottle) {
   if (bottle.status === 'replied') {
     router.push(`/chat/${bottle.id}`);
   } else if (bottle.status === 'picked') {
@@ -335,17 +260,9 @@ function handleBottleClick(bottle) {
   }
 }
 
-function goToHome() {
-  router.push('/');
-}
-
-function goToWelfare() {
-  router.push('/welfare');
-}
-
-function goToMy() {
-  router.push('/my');
-}
+function goToHome() { router.push('/'); }
+function goToWelfare() { router.push('/welfare'); }
+function goToMy() { router.push('/my'); }
 </script>
 
 <style scoped>
@@ -357,7 +274,7 @@ function goToMy() {
 
 .header {
   position: relative;
-  padding-top: 20px;
+  padding-top: 16px;
 }
 
 .header-bg {
@@ -365,105 +282,74 @@ function goToMy() {
   top: 0;
   left: 0;
   right: 0;
-  height: 140px;
+  height: 100px;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  border-radius: 0 0 30px 30px;
+  border-radius: 0 0 24px 24px;
 }
 
 .header-content {
   position: relative;
   z-index: 1;
-  padding: 20px 20px 30px;
+  padding: 16px 20px 20px;
   color: #fff;
 }
 
 .page-title {
-  font-size: 24px;
-  margin: 0 0 6px;
-}
-
-.page-desc {
-  font-size: 14px;
-  opacity: 0.85;
+  font-size: 22px;
   margin: 0;
 }
 
-.filter-tabs {
-  display: flex;
-  gap: 0;
-  padding: 0 16px;
-  margin-bottom: 12px;
-  background: #fff;
-  border-radius: 12px;
-  margin-left: 16px;
-  margin-right: 16px;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
-  overflow: hidden;
+.section {
+  margin: 0 16px 16px;
 }
 
-.filter-tab {
-  flex: 1;
+.section-header {
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 4px;
-  padding: 12px 0;
-  font-size: 14px;
-  color: #666;
-  cursor: pointer;
-  transition: all 0.2s;
-  border-bottom: 2px solid transparent;
+  gap: 8px;
+  padding: 16px 4px 8px;
 }
 
-.filter-tab.active {
-  color: #667eea;
+.section-title {
+  font-size: 15px;
   font-weight: bold;
-  border-bottom-color: #667eea;
+  color: #333;
 }
 
-.tab-count {
-  font-size: 11px;
-  background: #f0f0f0;
-  color: #999;
-  padding: 1px 6px;
-  border-radius: 8px;
-  font-weight: normal;
-}
-
-.filter-tab.active .tab-count {
+.section-count {
+  font-size: 12px;
   background: #667eea20;
   color: #667eea;
+  padding: 1px 8px;
+  border-radius: 10px;
 }
 
-.message-list {
-  padding: 0 16px;
+.section-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
-.message-item {
-  background: #fff;
-  border-radius: 12px;
-  padding: 16px;
-  margin-bottom: 10px;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
-  transition: transform 0.2s;
-  border-left: 3px solid #ddd;
-}
-
-.message-item:active {
-  transform: scale(0.98);
-}
-
-.message-item-replied {
-  border-left-color: #667eea;
-}
-
-.message-item-header {
+.msg-card {
   display: flex;
   align-items: center;
   gap: 12px;
+  background: #fff;
+  border-radius: 12px;
+  padding: 14px 16px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
+  transition: transform 0.15s;
 }
 
-.avatar-wrapper {
+.msg-card:active {
+  transform: scale(0.98);
+}
+
+.msg-card-active {
+  border-left: 3px solid #667eea;
+}
+
+.msg-avatar {
   position: relative;
   flex-shrink: 0;
 }
@@ -472,88 +358,89 @@ function goToMy() {
   position: absolute;
   top: -2px;
   right: -2px;
-  width: 12px;
-  height: 12px;
+  width: 10px;
+  height: 10px;
   background: #ff4d4f;
   border-radius: 50%;
   border: 2px solid #fff;
 }
 
-.message-user-info {
+.msg-body {
   flex: 1;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 
-.message-nickname-row {
+.msg-top-row {
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin-bottom: 4px;
+  gap: 6px;
 }
 
-.message-nickname {
+.msg-name {
   font-size: 15px;
   font-weight: bold;
   color: #333;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  max-width: 120px;
-}
-
-.status-tag {
-  font-size: 11px;
-  padding: 2px 8px;
-  border-radius: 8px;
-  font-weight: normal;
+  max-width: 140px;
   flex-shrink: 0;
 }
 
-.status-replied {
+.msg-time {
+  font-size: 12px;
+  color: #bbb;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.msg-badge {
+  font-size: 10px;
+  padding: 1px 7px;
+  border-radius: 8px;
+  flex-shrink: 0;
+}
+
+.badge-replied {
   background: #667eea20;
   color: #667eea;
 }
 
-.status-picked {
+.badge-picked {
   background: #ff976a20;
   color: #ff976a;
 }
 
-.status-floating {
+.badge-floating {
   background: #99999920;
   color: #999;
 }
 
-.message-preview {
+.msg-bottom-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.msg-preview {
   font-size: 13px;
   color: #999;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  flex: 1;
+  min-width: 0;
 }
 
-.preview-prefix {
+.prefix-self {
   color: #bbb;
 }
 
-.preview-bottle-content {
-  color: #bbb;
-}
-
-.message-meta {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 6px;
-  flex-shrink: 0;
-}
-
-.message-time {
-  font-size: 12px;
-  color: #bbb;
-}
-
-.unread-badge {
+.msg-unread {
   min-width: 18px;
   height: 18px;
   background: #ff4d4f;
@@ -564,19 +451,7 @@ function goToMy() {
   align-items: center;
   justify-content: center;
   padding: 0 5px;
-}
-
-.type-badge {
-  font-size: 10px;
-  color: #1989fa;
-  background: #1989fa15;
-  padding: 1px 6px;
-  border-radius: 6px;
-}
-
-.type-badge.received {
-  color: #07c160;
-  background: #07c16015;
+  flex-shrink: 0;
 }
 
 .empty-state {
@@ -584,56 +459,53 @@ function goToMy() {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 80px 20px;
+  padding: 100px 20px;
   color: #999;
 }
 
 .empty-icon {
-  font-size: 60px;
-  margin-bottom: 16px;
-  opacity: 0.5;
+  font-size: 56px;
+  margin-bottom: 14px;
+  opacity: 0.4;
 }
 
 .empty-text {
   font-size: 16px;
   font-weight: bold;
   color: #666;
-  margin-bottom: 6px;
+  margin-bottom: 4px;
 }
 
 .empty-desc {
-  font-size: 14px;
+  font-size: 13px;
 }
 
 .error-state {
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
   padding: 60px 20px;
   color: #999;
 }
 
 .error-icon {
-  font-size: 48px;
-  margin-bottom: 12px;
+  font-size: 44px;
+  margin-bottom: 10px;
 }
 
 .error-text {
   font-size: 16px;
   font-weight: bold;
   color: #ff4d4f;
-  margin-bottom: 6px;
+  margin-bottom: 4px;
 }
 
 .error-desc {
   font-size: 13px;
   color: #999;
-  text-align: center;
-  max-width: 260px;
 }
 
-.delete-btn {
+.swipe-delete {
   height: 100% !important;
 }
 </style>
