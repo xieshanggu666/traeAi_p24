@@ -3,6 +3,8 @@ const router = express.Router();
 const pool = require('../config/db');
 const { generateUUID, generateResponse } = require('../utils/helper');
 
+const DAILY_LIMIT = 20;
+
 function getLocalDateStr(date) {
   const d = date || new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -22,6 +24,36 @@ async function ensureDailyStat(userId, date) {
   }
 }
 
+async function getDailyCount(userId, date, field) {
+  const [rows] = await pool.execute(
+    `SELECT ${field} as count FROM daily_stats WHERE user_id = ? AND stat_date = ?`,
+    [userId, date]
+  );
+  return rows.length > 0 ? rows[0].count : 0;
+}
+
+router.get('/daily-limits', async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const today = getLocalDateStr();
+
+    const throwCount = await getDailyCount(userId, today, 'throw_count');
+    const pickCount = await getDailyCount(userId, today, 'pick_count');
+
+    res.json(generateResponse(true, {
+      throwCount,
+      pickCount,
+      throwLimit: DAILY_LIMIT,
+      pickLimit: DAILY_LIMIT,
+      throwRemaining: Math.max(0, DAILY_LIMIT - throwCount),
+      pickRemaining: Math.max(0, DAILY_LIMIT - pickCount)
+    }, '获取成功'));
+  } catch (error) {
+    console.error('获取每日限制失败:', error);
+    res.status(500).json(generateResponse(false, null, '获取每日限制失败'));
+  }
+});
+
 router.post('/throw', async (req, res) => {
   try {
     const { content } = req.body;
@@ -31,6 +63,14 @@ router.post('/throw', async (req, res) => {
       return res.status(400).json(generateResponse(false, null, '内容不能为空'));
     }
 
+    const today = getLocalDateStr();
+    await ensureDailyStat(senderId, today);
+    const throwCount = await getDailyCount(senderId, today, 'throw_count');
+
+    if (throwCount >= DAILY_LIMIT) {
+      return res.status(429).json(generateResponse(false, null, `今日扔瓶子次数已达上限(${DAILY_LIMIT}次)，明天再来吧`));
+    }
+
     const bottleId = generateUUID();
 
     await pool.execute(
@@ -38,8 +78,6 @@ router.post('/throw', async (req, res) => {
       [bottleId, senderId, content.trim(), 'floating']
     );
 
-    const today = getLocalDateStr();
-    await ensureDailyStat(senderId, today);
     await pool.execute(
       'UPDATE daily_stats SET throw_count = throw_count + 1 WHERE user_id = ? AND stat_date = ?',
       [senderId, today]
@@ -47,7 +85,8 @@ router.post('/throw', async (req, res) => {
 
     res.json(generateResponse(true, {
       id: bottleId,
-      content: content.trim()
+      content: content.trim(),
+      throwRemaining: Math.max(0, DAILY_LIMIT - throwCount - 1)
     }, '瓶子扔出成功'));
   } catch (error) {
     console.error('扔瓶子失败:', error);
@@ -58,6 +97,14 @@ router.post('/throw', async (req, res) => {
 router.post('/pick', async (req, res) => {
   try {
     const pickerId = req.user.userId;
+
+    const today = getLocalDateStr();
+    await ensureDailyStat(pickerId, today);
+    const pickCount = await getDailyCount(pickerId, today, 'pick_count');
+
+    if (pickCount >= DAILY_LIMIT) {
+      return res.status(429).json(generateResponse(false, null, `今日捞瓶子次数已达上限(${DAILY_LIMIT}次)，明天再来吧`));
+    }
 
     const [floatingBottles] = await pool.execute(
       'SELECT b.id, b.sender_id, b.content, b.created_at, u.nickname as sender_nickname, u.avatar as sender_avatar ' +
@@ -79,8 +126,6 @@ router.post('/pick', async (req, res) => {
       ['picked', pickerId, bottle.id]
     );
 
-    const today = getLocalDateStr();
-    await ensureDailyStat(pickerId, today);
     await pool.execute(
       'UPDATE daily_stats SET pick_count = pick_count + 1 WHERE user_id = ? AND stat_date = ?',
       [pickerId, today]
@@ -92,7 +137,8 @@ router.post('/pick', async (req, res) => {
       senderId: bottle.sender_id,
       senderNickname: bottle.sender_nickname,
       senderAvatar: bottle.sender_avatar,
-      createdAt: bottle.created_at
+      createdAt: bottle.created_at,
+      pickRemaining: Math.max(0, DAILY_LIMIT - pickCount - 1)
     }, '捞到瓶子了'));
   } catch (error) {
     console.error('捞瓶子失败:', error);

@@ -104,12 +104,12 @@ router.get('/records', async (req, res) => {
     const pageSize = parseInt(req.query.pageSize) || 20;
     const offset = (page - 1) * pageSize;
 
-    const [records] = await pool.execute(
+    const [records] = await pool.query(
       'SELECT id, amount, type, source, created_at FROM coin_records WHERE user_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?',
       [userId, pageSize, offset]
     );
 
-    const [countResult] = await pool.execute(
+    const [countResult] = await pool.query(
       'SELECT COUNT(*) as total FROM coin_records WHERE user_id = ?',
       [userId]
     );

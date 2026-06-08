@@ -181,6 +181,7 @@
 
     <van-tabbar v-model="active" active-color="#1989fa">
       <van-tabbar-item name="home" icon="home-o" @click="goToHome">首页</van-tabbar-item>
+      <van-tabbar-item name="messages" icon="chat-o" @click="goToMessages">消息</van-tabbar-item>
       <van-tabbar-item name="welfare" icon="gift-o">福利</van-tabbar-item>
       <van-tabbar-item name="my" icon="user-o" @click="goToMy">我的</van-tabbar-item>
     </van-tabbar>
@@ -423,6 +424,10 @@ function goToHome() {
 
 function goToMy() {
   router.push('/my');
+}
+
+function goToMessages() {
+  router.push('/messages');
 }
 </script>
 

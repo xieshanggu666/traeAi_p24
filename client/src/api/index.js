@@ -99,6 +99,10 @@ export const claimTask = (taskKey) => {
   return request.post('/welfare/claim-task', { taskKey });
 };
 
+export const getDailyLimits = () => {
+  return request.get('/bottle/daily-limits');
+};
+
 export const reportUsage = (seconds) => {
   return request.post('/welfare/report-usage', { seconds });
 };

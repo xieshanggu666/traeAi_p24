@@ -5,10 +5,17 @@
       <div class="nav-bar">
         <van-icon name="arrow-left" size="24" color="#fff" @click="goBack" />
         <span class="nav-title">捞瓶子</span>
-        <div style="width: 24px;"></div>
+        <div class="limit-badge" :class="{ 'limit-reached': pickRemaining <= 0 }">
+          今日剩余: {{ pickRemaining }}次
+        </div>
       </div>
 
-      <div class="pick-area" v-if="!bottle && !isPicking">
+      <div class="limit-warning" v-if="pickRemaining <= 0 && !bottle && !isPicking">
+        <van-icon name="warning-o" size="16" />
+        <span>今日捞瓶子次数已达上限(20次)，明天再来吧</span>
+      </div>
+
+      <div class="pick-area" v-if="!bottle && !isPicking && pickRemaining > 0">
         <div class="net-animation">
           <div class="net">
             <span class="net-icon">🥅</span>
@@ -106,7 +113,7 @@
         <div class="empty-desc">过一会儿再来试试吧</div>
       </div>
 
-      <div class="pick-button-area" v-if="!bottle && !isPicking && !showEmpty">
+      <div class="pick-button-area" v-if="!bottle && !isPicking && !showEmpty && pickRemaining > 0">
         <van-button
           type="primary"
           size="large"
@@ -116,10 +123,10 @@
         >
           🌊 捞一个
         </van-button>
-        <div class="pick-tip">每天可以捞取无数个瓶子哦</div>
+        <div class="pick-tip">今日还可捞 {{ pickRemaining }} 次</div>
       </div>
 
-      <div class="pick-button-area" v-if="showEmpty && !bottle">
+      <div class="pick-button-area" v-if="showEmpty && !bottle && pickRemaining > 0">
         <van-button
           type="primary"
           size="large"
@@ -135,11 +142,10 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { showToast } from 'vant';
-import { getUser } from '../utils/storage';
-import { pickBottle as apiPickBottle, returnBottle as apiReturnBottle, replyBottle as apiReplyBottle } from '../api';
+import { pickBottle as apiPickBottle, returnBottle as apiReturnBottle, replyBottle as apiReplyBottle, getDailyLimits } from '../api';
 import AvatarDisplay from '../components/AvatarDisplay.vue';
 
 const router = useRouter();
@@ -150,10 +156,26 @@ const isReplying = ref(false);
 const showReply = ref(false);
 const showEmpty = ref(false);
 const replyContent = ref('');
+const pickRemaining = ref(20);
+const pickLimit = ref(20);
 
 const canReply = computed(() => {
   return replyContent.value.trim().length > 0;
 });
+
+onMounted(() => {
+  fetchDailyLimits();
+});
+
+async function fetchDailyLimits() {
+  try {
+    const result = await getDailyLimits();
+    pickRemaining.value = result.pickRemaining;
+    pickLimit.value = result.pickLimit;
+  } catch (error) {
+    console.error('获取每日限制失败:', error);
+  }
+}
 
 function formatTime(time) {
   if (!time) return '';
@@ -168,14 +190,27 @@ function formatTime(time) {
 }
 
 async function pickBottle() {
+  if (pickRemaining.value <= 0) {
+    showToast('今日捞瓶子次数已达上限');
+    return;
+  }
+
   isPicking.value = true;
   showEmpty.value = false;
 
   try {
     const result = await apiPickBottle();
     bottle.value = result;
+    if (result.pickRemaining !== undefined) {
+      pickRemaining.value = result.pickRemaining;
+    } else {
+      pickRemaining.value = Math.max(0, pickRemaining.value - 1);
+    }
   } catch (error) {
-    if (error.businessMessage === '海里暂时没有漂流瓶') {
+    if (error.httpMessage && error.httpMessage.includes('上限')) {
+      pickRemaining.value = 0;
+      showToast(error.httpMessage);
+    } else if (error.businessMessage === '海里暂时没有漂流瓶') {
       showEmpty.value = true;
     } else {
       showToast(error.businessMessage || error.httpMessage || '出现异常');
@@ -248,6 +283,30 @@ function goBack() {
   color: #fff;
   font-size: 18px;
   font-weight: bold;
+}
+
+.limit-badge {
+  color: #fff;
+  font-size: 13px;
+  background: rgba(255, 255, 255, 0.2);
+  padding: 4px 10px;
+  border-radius: 12px;
+}
+
+.limit-badge.limit-reached {
+  background: rgba(255, 77, 79, 0.7);
+}
+
+.limit-warning {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(255, 77, 79, 0.9);
+  color: #fff;
+  padding: 10px 16px;
+  border-radius: 10px;
+  font-size: 14px;
+  margin-top: 10px;
 }
 
 .pick-area {
@@ -488,6 +547,10 @@ function goBack() {
   border: none;
   height: 54px;
   font-size: 17px;
+}
+
+.pick-btn:disabled {
+  background: #ccc;
 }
 
 .pick-tip {

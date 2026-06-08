@@ -33,6 +33,12 @@ const routes = [
     meta: { title: '捞瓶子', requiresAuth: true }
   },
   {
+    path: '/messages',
+    name: 'Messages',
+    component: () => import('../views/Messages.vue'),
+    meta: { title: '消息', requiresAuth: true }
+  },
+  {
     path: '/chat/:bottleId',
     name: 'Chat',
     component: () => import('../views/Chat.vue'),

@@ -5,7 +5,9 @@
       <div class="nav-bar">
         <van-icon name="arrow-left" size="24" color="#fff" @click="goBack" />
         <span class="nav-title">扔瓶子</span>
-        <div style="width: 24px;"></div>
+        <div class="limit-badge" :class="{ 'limit-reached': throwRemaining <= 0 }">
+          今日剩余: {{ throwRemaining }}次
+        </div>
       </div>
 
       <div class="throw-animation" v-if="!showSuccess">
@@ -21,6 +23,11 @@
         <div class="success-text">瓶子已扔向大海 🌊</div>
       </div>
 
+      <div class="limit-warning" v-if="throwRemaining <= 0 && !showSuccess">
+        <van-icon name="warning-o" size="16" />
+        <span>今日扔瓶子次数已达上限(20次)，明天再来吧</span>
+      </div>
+
       <div class="input-card" v-if="!showSuccess">
         <div class="input-header">
           <span class="input-icon">💭</span>
@@ -31,7 +38,7 @@
           class="bottle-input"
           placeholder="在这里写下你的心情、故事或者想说的话..."
           maxlength="500"
-          :disabled="isThrowing"
+          :disabled="isThrowing || throwRemaining <= 0"
           @input="onInput"
         ></textarea>
         <div class="char-count">{{ content.length }}/500</div>
@@ -52,17 +59,18 @@
           block
           size="large"
           class="throw-btn"
-          :disabled="!canThrow || isThrowing"
+          :disabled="!canThrow || isThrowing || throwRemaining <= 0"
           :loading="isThrowing"
           loading-text="扔出中..."
           @click="throwBottle"
         >
           🌊 扔向大海
         </van-button>
+        <div class="throw-tip" v-if="throwRemaining > 0">今日还可扔 {{ throwRemaining }} 次</div>
       </div>
 
       <div class="success-actions" v-else>
-        <van-button type="primary" block @click="throwAgain">
+        <van-button type="primary" block @click="throwAgain" :disabled="throwRemaining <= 0">
           再扔一个
         </van-button>
         <van-button plain block style="margin-top: 12px;" @click="goBack">
@@ -74,17 +82,18 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { showToast } from 'vant';
-import { getUser } from '../utils/storage';
-import { throwBottle as apiThrowBottle } from '../api';
+import { throwBottle as apiThrowBottle, getDailyLimits } from '../api';
 
 const router = useRouter();
 const content = ref('');
 const isThrowing = ref(false);
 const isWriting = ref(false);
 const showSuccess = ref(false);
+const throwRemaining = ref(20);
+const throwLimit = ref(20);
 
 const quickMessages = [
   '今天心情很好！',
@@ -96,8 +105,22 @@ const quickMessages = [
 ];
 
 const canThrow = computed(() => {
-  return content.value.trim().length > 0;
+  return content.value.trim().length > 0 && throwRemaining.value > 0;
 });
+
+onMounted(() => {
+  fetchDailyLimits();
+});
+
+async function fetchDailyLimits() {
+  try {
+    const result = await getDailyLimits();
+    throwRemaining.value = result.throwRemaining;
+    throwLimit.value = result.throwLimit;
+  } catch (error) {
+    console.error('获取每日限制失败:', error);
+  }
+}
 
 function onInput() {
   isWriting.value = true;
@@ -112,7 +135,11 @@ function useQuickMessage(msg) {
 
 async function throwBottle() {
   if (!canThrow.value) {
-    showToast('请先写下你想说的话');
+    if (throwRemaining.value <= 0) {
+      showToast('今日扔瓶子次数已达上限');
+    } else {
+      showToast('请先写下你想说的话');
+    }
     return;
   }
 
@@ -121,15 +148,29 @@ async function throwBottle() {
   try {
     const result = await apiThrowBottle(content.value);
     showToast(result._message || '操作成功');
+    if (result.throwRemaining !== undefined) {
+      throwRemaining.value = result.throwRemaining;
+    } else {
+      throwRemaining.value = Math.max(0, throwRemaining.value - 1);
+    }
     showSuccess.value = true;
   } catch (error) {
-    showToast(error.businessMessage || error.httpMessage || '出现异常');
+    if (error.httpMessage && error.httpMessage.includes('上限')) {
+      throwRemaining.value = 0;
+      showToast(error.httpMessage);
+    } else {
+      showToast(error.businessMessage || error.httpMessage || '出现异常');
+    }
   } finally {
     isThrowing.value = false;
   }
 }
 
 function throwAgain() {
+  if (throwRemaining.value <= 0) {
+    showToast('今日扔瓶子次数已达上限');
+    return;
+  }
   content.value = '';
   showSuccess.value = false;
 }
@@ -151,6 +192,30 @@ function goBack() {
   color: #fff;
   font-size: 18px;
   font-weight: bold;
+}
+
+.limit-badge {
+  color: #fff;
+  font-size: 13px;
+  background: rgba(255, 255, 255, 0.2);
+  padding: 4px 10px;
+  border-radius: 12px;
+}
+
+.limit-badge.limit-reached {
+  background: rgba(255, 77, 79, 0.7);
+}
+
+.limit-warning {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(255, 77, 79, 0.9);
+  color: #fff;
+  padding: 10px 16px;
+  border-radius: 10px;
+  font-size: 14px;
+  margin-top: 10px;
 }
 
 .throw-animation {
@@ -294,6 +359,14 @@ function goBack() {
 
 .throw-btn:disabled {
   background: #ccc;
+}
+
+.throw-tip {
+  text-align: center;
+  color: #fff;
+  font-size: 12px;
+  margin-top: 10px;
+  opacity: 0.8;
 }
 
 .success-actions {

@@ -11,9 +11,9 @@
           </div>
         </div>
         <van-badge :content="unreadCount" v-if="unreadCount > 0" :offset="[-5, 5]">
-          <van-icon name="chat-o" size="28" color="#fff" @click="goToMy" />
+          <van-icon name="chat-o" size="28" color="#fff" @click="goToMessages" />
         </van-badge>
-        <van-icon v-else name="chat-o" size="28" color="#fff" @click="goToMy" />
+        <van-icon v-else name="chat-o" size="28" color="#fff" @click="goToMessages" />
       </div>
 
       <div class="main-title">
@@ -54,16 +54,16 @@
 
     <van-tabbar v-model="active" active-color="#1989fa">
       <van-tabbar-item name="home" icon="home-o">首页</van-tabbar-item>
+      <van-tabbar-item name="messages" icon="chat-o" :badge="unreadCount > 0 ? unreadCount : ''" @click="goToMessages">消息</van-tabbar-item>
       <van-tabbar-item name="welfare" icon="gift-o" @click="goToWelfare">福利</van-tabbar-item>
-      <van-tabbar-item name="my" icon="user-o">我的</van-tabbar-item>
+      <van-tabbar-item name="my" icon="user-o" @click="goToMy">我的</van-tabbar-item>
     </van-tabbar>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
+import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { useRouter } from 'vue-router';
-import { showToast } from 'vant';
 import { getUser } from '../utils/storage';
 import { getUnreadCount } from '../api';
 import AvatarDisplay from '../components/AvatarDisplay.vue';
@@ -113,12 +113,9 @@ function goToWelfare() {
   router.push('/welfare');
 }
 
-watch(active, (newVal) => {
-  if (newVal === 'my') {
-    router.push('/my');
-    active.value = 'home';
-  }
-});
+function goToMessages() {
+  router.push('/messages');
+}
 </script>
 
 <style scoped>

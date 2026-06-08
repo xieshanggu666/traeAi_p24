@@ -25,133 +25,71 @@
     </div>
 
     <div class="content">
-      <van-tabs v-model:active="activeTab" sticky offset-top="140">
-        <van-tab title="收到的回复" name="received">
-          <van-pull-refresh v-model="refreshing" @refresh="onRefresh">
-            <div class="bottle-list">
-              <van-swipe-cell
-                v-for="bottle in receivedBottles"
-                :key="bottle.id"
-              >
-                <div
-                  class="bottle-item"
-                  @click="goToChat(bottle)"
-                >
-                  <div class="bottle-item-header">
-                    <div class="avatar-wrapper">
-                      <AvatarDisplay :avatar="bottle.other_avatar" :size="44" />
-                      <span
-                        class="unread-dot"
-                        v-if="bottle.unread_count > 0 && bottle.latest_sender_id !== currentUserId"
-                      ></span>
-                    </div>
-                    <div class="bottle-user-info">
-                      <div class="bottle-nickname">{{ bottle.other_nickname }}</div>
-                      <div class="bottle-type received">
-                        <van-icon name="chat-o" size="12" />
-                        {{ bottle.type === 'sent' ? 'TA回复了我的瓶子' : '我回复了TA的瓶子' }}
-                      </div>
-                    </div>
-                    <div class="bottle-time">{{ formatTime(bottle.latest_message_time || bottle.created_at) }}</div>
-                  </div>
-                  <div class="bottle-content">
-                    <span class="bottle-label" v-if="bottle.latest_message">
-                      {{ bottle.latest_sender_id === currentUserId ? '我:' : 'TA:' }}
-                    </span>
-                    <span class="bottle-label" v-else>瓶子内容：</span>
-                    {{ bottle.latest_message || bottle.content }}
+      <div class="section-title">🍾 我发起的瓶子</div>
+      <van-pull-refresh v-model="refreshing" @refresh="onRefresh">
+        <div class="bottle-list">
+          <van-swipe-cell
+            v-for="bottle in sentBottles"
+            :key="bottle.id"
+          >
+            <div
+              class="bottle-item"
+              :class="{ 'bottle-item-disabled': bottle.status !== 'replied' }"
+              @click="goToChat(bottle)"
+            >
+              <div class="bottle-item-header">
+                <AvatarDisplay :avatar="bottle.other_avatar" :size="44" />
+                <div class="bottle-user-info">
+                  <div class="bottle-nickname">{{ bottle.other_nickname }}</div>
+                  <div class="bottle-type" :class="bottle.status">
+                    <van-icon v-if="bottle.status === 'replied'" name="intersection-o" size="12" />
+                    <van-icon v-else-if="bottle.status === 'picked'" name="eye-o" size="12" />
+                    <van-icon v-else name="clock-o" size="12" />
+                    {{ bottle.status === 'replied' ? '已回复' : (bottle.status === 'picked' ? '已被捡起' : '等待被捞取') }}
                   </div>
                 </div>
-                <template #right>
-                  <van-button
-                    square
-                    type="danger"
-                    class="delete-btn"
-                    text="删除"
-                    @click="handleDeleteReceived(bottle)"
-                  />
-                </template>
-              </van-swipe-cell>
-
-              <div class="empty-state" v-if="receivedBottles.length === 0 && !loading">
-                <div class="empty-icon">📭</div>
-                <div class="empty-text">还没有对话</div>
-                <div class="empty-desc">扔个瓶子或捞个瓶子开始对话吧</div>
+                <div class="bottle-time">{{ formatTime(bottle.created_at) }}</div>
               </div>
-
-              <van-loading v-if="loading" color="#1989fa" style="margin-top: 40px;">
-                加载中...
-              </van-loading>
-            </div>
-          </van-pull-refresh>
-        </van-tab>
-
-        <van-tab title="我发起的" name="sent">
-          <van-pull-refresh v-model="refreshing" @refresh="onRefresh">
-            <div class="bottle-list">
-              <van-swipe-cell
-                v-for="bottle in sentBottles"
-                :key="bottle.id"
-              >
-                <div
-                  class="bottle-item"
-                  :class="{ 'bottle-item-disabled': bottle.status !== 'replied' }"
-                  @click="goToChat(bottle)"
-                >
-                  <div class="bottle-item-header">
-                    <AvatarDisplay :avatar="bottle.other_avatar" :size="44" />
-                    <div class="bottle-user-info">
-                      <div class="bottle-nickname">{{ bottle.other_nickname }}</div>
-                      <div class="bottle-type" :class="bottle.status">
-                        <van-icon v-if="bottle.status === 'replied'" name="intersection-o" size="12" />
-                        <van-icon v-else-if="bottle.status === 'picked'" name="eye-o" size="12" />
-                        <van-icon v-else name="clock-o" size="12" />
-                        {{ bottle.status === 'replied' ? '已回复' : (bottle.status === 'picked' ? '已被捡起' : '等待被捞取') }}
-                      </div>
-                    </div>
-                    <div class="bottle-time">{{ formatTime(bottle.created_at) }}</div>
-                  </div>
-                  <div class="bottle-content">
-                    <span class="bottle-label">瓶子内容：</span>
-                    {{ bottle.content }}
-                  </div>
-                </div>
-                <template #right>
-                  <van-button
-                    square
-                    type="danger"
-                    class="delete-btn"
-                    text="删除"
-                    @click="handleDeleteSent(bottle)"
-                  />
-                </template>
-              </van-swipe-cell>
-
-              <div class="empty-state" v-if="sentBottles.length === 0 && !loading">
-                <div class="empty-icon">🍾</div>
-                <div class="empty-text">还没有扔过瓶子</div>
-                <div class="empty-desc">快去扔一个瓶子吧</div>
-                <van-button
-                  type="primary"
-                  size="small"
-                  style="margin-top: 20px;"
-                  @click="goToThrow"
-                >
-                  去扔瓶子
-                </van-button>
+              <div class="bottle-content">
+                <span class="bottle-label">瓶子内容：</span>
+                {{ bottle.content }}
               </div>
-
-              <van-loading v-if="loading" color="#1989fa" style="margin-top: 40px;">
-                加载中...
-              </van-loading>
             </div>
-          </van-pull-refresh>
-        </van-tab>
-      </van-tabs>
+            <template #right>
+              <van-button
+                square
+                type="danger"
+                class="delete-btn"
+                text="删除"
+                @click="handleDelete(bottle)"
+              />
+            </template>
+          </van-swipe-cell>
+
+          <div class="empty-state" v-if="sentBottles.length === 0 && !loading">
+            <div class="empty-icon">🍾</div>
+            <div class="empty-text">还没有扔过瓶子</div>
+            <div class="empty-desc">快去扔一个瓶子吧</div>
+            <van-button
+              type="primary"
+              size="small"
+              style="margin-top: 20px;"
+              @click="goToThrow"
+            >
+              去扔瓶子
+            </van-button>
+          </div>
+
+          <van-loading v-if="loading" color="#1989fa" style="margin-top: 40px;">
+            加载中...
+          </van-loading>
+        </div>
+      </van-pull-refresh>
     </div>
 
     <van-tabbar v-model="activeBottom" active-color="#1989fa">
       <van-tabbar-item name="home" icon="home-o" @click="goToHome">首页</van-tabbar-item>
+      <van-tabbar-item name="messages" icon="chat-o" @click="goToMessages">消息</van-tabbar-item>
       <van-tabbar-item name="welfare" icon="gift-o" @click="goToWelfare">福利</van-tabbar-item>
       <van-tabbar-item name="my" icon="user-o">我的</van-tabbar-item>
     </van-tabbar>
@@ -163,35 +101,16 @@ import { ref, computed, onMounted, watch } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import { showToast } from 'vant';
 import { getUser, clearAuth, setUser } from '../utils/storage';
-import { getMyBottles, logout, deleteBottle, softDeleteBottle, getUserInfo } from '../api';
+import { getMyBottles, logout, deleteBottle, getUserInfo } from '../api';
 import AvatarDisplay from '../components/AvatarDisplay.vue';
 
 const router = useRouter();
 const route = useRoute();
 const user = ref(null);
-const activeTab = ref('received');
 const activeBottom = ref('my');
 const bottles = ref([]);
 const loading = ref(false);
 const refreshing = ref(false);
-
-const currentUserId = computed(() => user.value?.id);
-
-const receivedBottles = computed(() => {
-  const repliedBottles = bottles.value.filter(b => b.status === 'replied');
-
-  return repliedBottles.sort((a, b) => {
-    const aHasUnread = a.unread_count > 0 && a.latest_sender_id !== currentUserId.value;
-    const bHasUnread = b.unread_count > 0 && b.latest_sender_id !== currentUserId.value;
-
-    if (aHasUnread && !bHasUnread) return -1;
-    if (!aHasUnread && bHasUnread) return 1;
-
-    const aTime = a.latest_message_time ? new Date(a.latest_message_time) : new Date(a.created_at);
-    const bTime = b.latest_message_time ? new Date(b.latest_message_time) : new Date(b.created_at);
-    return bTime - aTime;
-  });
-});
 
 const sentBottles = computed(() => {
   return bottles.value.filter(b => b.type === 'sent');
@@ -248,27 +167,10 @@ async function onRefresh() {
   }
 }
 
-async function handleDeleteSent(bottle) {
+async function handleDelete(bottle) {
   try {
     const result = await deleteBottle(bottle.id);
     showToast(result._message || '操作成功');
-    bottles.value = bottles.value.filter(b => b.id !== bottle.id);
-  } catch (error) {
-    showToast(error.businessMessage || error.httpMessage || '出现异常');
-  }
-}
-
-async function handleDeleteReceived(bottle) {
-  try {
-    const isSender = bottle.type === 'sent';
-
-    if (isSender) {
-      const result = await deleteBottle(bottle.id);
-      showToast(result._message || '操作成功');
-    } else {
-      const result = await softDeleteBottle(bottle.id);
-      showToast(result._message || '操作成功');
-    }
     bottles.value = bottles.value.filter(b => b.id !== bottle.id);
   } catch (error) {
     showToast(error.businessMessage || error.httpMessage || '出现异常');
@@ -322,6 +224,10 @@ function goToThrow() {
 
 function goToEditProfile() {
   router.push('/edit-profile');
+}
+
+function goToMessages() {
+  router.push('/messages');
 }
 </script>
 
@@ -415,8 +321,16 @@ function goToEditProfile() {
   min-height: calc(100vh - 280px);
 }
 
+.section-title {
+  font-size: 16px;
+  font-weight: bold;
+  color: #333;
+  padding: 0 16px;
+  margin-bottom: 12px;
+}
+
 .bottle-list {
-  padding: 12px 16px;
+  padding: 0 16px;
 }
 
 .bottle-item {
@@ -440,22 +354,6 @@ function goToEditProfile() {
   margin-bottom: 12px;
 }
 
-.avatar-wrapper {
-  position: relative;
-  flex-shrink: 0;
-}
-
-.unread-dot {
-  position: absolute;
-  top: -2px;
-  right: -2px;
-  width: 12px;
-  height: 12px;
-  background: #ff4d4f;
-  border-radius: 50%;
-  border: 2px solid #fff;
-}
-
 .bottle-user-info {
   flex: 1;
   display: flex;
@@ -475,10 +373,6 @@ function goToEditProfile() {
   gap: 4px;
   font-size: 12px;
   color: #666;
-}
-
-.bottle-type.received {
-  color: #07c160;
 }
 
 .bottle-type.replied {
