@@ -35,6 +35,11 @@
           <span class="action-text">我的背包</span>
           <van-icon name="arrow" size="14" color="#ccc" />
         </div>
+        <div class="action-item" @click="goToGifts">
+          <van-icon name="gift-o" size="20" color="#ff6b9d" />
+          <span class="action-text">我的礼物</span>
+          <van-icon name="arrow" size="14" color="#ccc" />
+        </div>
       </div>
 
       <van-button
@@ -128,6 +133,7 @@ function goToEditProfile() { router.push('/edit-profile'); }
 function goToMessages() { router.push('/messages'); }
 function goToShop() { router.push('/shop'); }
 function goToBackpack() { router.push('/backpack'); }
+function goToGifts() { router.push('/gifts'); }
 </script>
 
 <style scoped>

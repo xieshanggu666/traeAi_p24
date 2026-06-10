@@ -130,3 +130,15 @@ export const useThrowCard = () => {
 export const usePickCard = () => {
   return request.post('/shop/use-pick-card');
 };
+
+export const getGiftInfo = () => {
+  return request.get('/shop/gift-info');
+};
+
+export const sendGift = (receiverId, giftKey) => {
+  return request.post('/shop/send-gift', { receiverId, giftKey });
+};
+
+export const searchUsers = (keyword) => {
+  return request.get('/shop/users/search', { params: { keyword } });
+};

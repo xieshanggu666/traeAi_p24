@@ -21,6 +21,17 @@
             <div class="item-quantity">拥有: <span class="quantity-num">{{ item.quantity }}</span></div>
           </div>
           <van-button
+            v-if="item.category === 'gift'"
+            size="small"
+            round
+            type="warning"
+            :disabled="item.quantity <= 0"
+            @click="handleSendGift(item)"
+          >
+            赠送
+          </van-button>
+          <van-button
+            v-else
             size="small"
             round
             type="primary"
@@ -84,6 +95,64 @@
         </div>
       </div>
     </van-popup>
+
+    <van-popup
+      v-model:show="showGiftPopup"
+      round
+      position="bottom"
+      :style="{ maxHeight: '80vh' }"
+    >
+      <div class="gift-popup">
+        <div class="popup-header">
+          <div class="popup-title">
+            <span v-if="currentGift">{{ currentGift.icon }} 赠送「{{ currentGift.name }}」</span>
+          </div>
+          <van-icon name="cross" size="20" @click="showGiftPopup = false" />
+        </div>
+
+        <div class="gift-tip" v-if="currentGift">
+          赠送后对方魅力值 +{{ currentGift.charmValue }}
+        </div>
+
+        <van-search
+          v-model="searchKeyword"
+          placeholder="输入昵称搜索用户"
+          shape="round"
+          show-action
+          action-text="搜索"
+          @search="handleSearchUser"
+          @action-click="handleSearchUser"
+        />
+
+        <div class="search-results">
+          <van-loading v-if="searchLoading" color="#1989fa" style="display: block; text-align: center; padding: 30px 0;">搜索中...</van-loading>
+          <div v-else-if="searchResults.length > 0" class="user-list">
+            <div
+              v-for="user in searchResults"
+              :key="user.id"
+              class="user-item"
+              @click="confirmSendGift(user)"
+            >
+              <div class="user-avatar">{{ user.avatar }}</div>
+              <div class="user-info">
+                <div class="user-nickname">{{ user.nickname }}</div>
+                <div class="user-meta">
+                  <span v-if="user.gender" class="user-gender">{{ user.gender }}</span>
+                  <span class="user-charm">魅力 {{ user.charm || 0 }}</span>
+                </div>
+              </div>
+              <van-icon name="arrow" size="16" color="#ccc" />
+            </div>
+          </div>
+          <div v-else-if="searchKeyword && !searchLoading" class="empty-search">
+            未找到匹配的用户
+          </div>
+          <div v-else class="empty-search">
+            请输入昵称搜索要赠送的用户
+          </div>
+        </div>
+      </div>
+    </van-popup>
   </div>
 </template>
 
@@ -96,13 +165,20 @@ import {
   useRetroCard,
   useThrowCard,
   usePickCard,
-  getCheckinStatus
+  getCheckinStatus,
+  sendGift,
+  searchUsers
 } from '../api';
 
 const router = useRouter();
 const items = ref([]);
 const loading = ref(false);
 const showRetroPopup = ref(false);
+const showGiftPopup = ref(false);
+const currentGift = ref(null);
+const searchKeyword = ref('');
+const searchResults = ref([]);
+const searchLoading = ref(false);
 const calYear = ref(new Date().getFullYear());
 const calMonth = ref(new Date().getMonth() + 1);
 const checkinDates = ref([]);
@@ -245,6 +321,51 @@ function nextMonth() {
 
 function goToShop() {
   router.push('/shop');
+}
+
+async function handleSendGift(item) {
+  currentGift.value = item;
+  searchKeyword.value = '';
+  searchResults.value = [];
+  showGiftPopup.value = true;
+}
+
+async function handleSearchUser() {
+  if (!searchKeyword.value.trim()) {
+    searchResults.value = [];
+    return;
+  }
+  searchLoading.value = true;
+  try {
+    searchResults.value = await searchUsers(searchKeyword.value.trim());
+  } catch (error) {
+    console.error('搜索用户失败:', error);
+    showToast('搜索失败');
+  } finally {
+    searchLoading.value = false;
+  }
+}
+
+async function confirmSendGift(user) {
+  if (!currentGift.value) return;
+  try {
+    await showDialog({
+      title: '确认赠送',
+      message: `确定将「${currentGift.value.name}」赠送给「${user.nickname}」吗？\n对方将获得魅力值+${currentGift.value.charmValue}`,
+      showCancelButton: true,
+      confirmButtonText: '赠送',
+      cancelButtonText: '取消'
+    });
+
+    const result = await sendGift(user.id, currentGift.value.key);
+    showToast(result._message || '赠送成功');
+    showGiftPopup.value = false;
+    await fetchItems();
+  } catch (error) {
+    if (error.isBusinessError || error.httpMessage) {
+      showToast(error.businessMessage || error.httpMessage || '赠送失败');
+    }
+  }
 }
 </script>
 
@@ -473,5 +594,95 @@ function goToShop() {
   color: #ff9800;
   font-weight: bold;
   font-size: 10px;
+}
+
+.gift-popup {
+  padding: 20px;
+}
+
+.gift-tip {
+  background: #fff0f5;
+  color: #ff6b9d;
+  font-size: 13px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  margin-bottom: 16px;
+  text-align: center;
+}
+
+.search-results {
+  max-height: 50vh;
+  overflow-y: auto;
+  margin-top: 12px;
+}
+
+.user-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.user-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  background: #f9f9f9;
+  border-radius: 12px;
+  cursor: pointer;
+}
+
+.user-item:active {
+  background: #f0f0f0;
+}
+
+.user-avatar {
+  font-size: 32px;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #fff;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.user-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.user-nickname {
+  font-size: 15px;
+  font-weight: bold;
+  color: #333;
+  margin-bottom: 2px;
+}
+
+.user-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: #999;
+}
+
+.user-gender {
+  background: #eef5ff;
+  color: #4a9eff;
+  padding: 1px 8px;
+  border-radius: 8px;
+}
+
+.user-charm {
+  color: #ff6b9d;
+}
+
+.empty-search {
+  padding: 40px 20px;
+  text-align: center;
+  color: #999;
+  font-size: 14px;
 }
 </style>

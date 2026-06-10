@@ -10,7 +10,8 @@ const PRODUCTS = [
     description: '可在日历上点击未签到的日期使用，成功补签对应日期',
     price: 10,
     dailyLimit: 1,
-    icon: '📅'
+    icon: '📅',
+    category: 'function'
   },
   {
     key: 'throw_card',
@@ -18,7 +19,8 @@ const PRODUCTS = [
     description: '使用后增加扔瓶子的次数+1',
     price: 5,
     dailyLimit: 0,
-    icon: '📤'
+    icon: '📤',
+    category: 'function'
   },
   {
     key: 'pick_card',
@@ -26,7 +28,68 @@ const PRODUCTS = [
     description: '使用后增加捞瓶子的次数+1',
     price: 5,
     dailyLimit: 0,
-    icon: '📥'
+    icon: '📥',
+    category: 'function'
+  },
+  {
+    key: 'gift_flower',
+    name: '鲜花',
+    description: '赠送后对方魅力值+10',
+    price: 10,
+    dailyLimit: 0,
+    icon: '💐',
+    category: 'gift',
+    charmValue: 10
+  },
+  {
+    key: 'gift_cake',
+    name: '蛋糕',
+    description: '赠送后对方魅力值+50',
+    price: 50,
+    dailyLimit: 0,
+    icon: '🎂',
+    category: 'gift',
+    charmValue: 50
+  },
+  {
+    key: 'gift_chocolate',
+    name: '巧克力',
+    description: '赠送后对方魅力值+20',
+    price: 20,
+    dailyLimit: 0,
+    icon: '🍫',
+    category: 'gift',
+    charmValue: 20
+  },
+  {
+    key: 'gift_wine',
+    name: '红酒',
+    description: '赠送后对方魅力值+88',
+    price: 88,
+    dailyLimit: 0,
+    icon: '🍷',
+    category: 'gift',
+    charmValue: 88
+  },
+  {
+    key: 'gift_ring',
+    name: '戒指',
+    description: '赠送后对方魅力值+520',
+    price: 520,
+    dailyLimit: 0,
+    icon: '💍',
+    category: 'gift',
+    charmValue: 520
+  },
+  {
+    key: 'gift_rocket',
+    name: '火箭',
+    description: '赠送后对方魅力值+1000',
+    price: 999,
+    dailyLimit: 0,
+    icon: '🚀',
+    category: 'gift',
+    charmValue: 1000
   }
 ];
 
@@ -84,7 +147,12 @@ router.get('/products', async (req, res) => {
       canBuy: p.dailyLimit === 0 || (purchaseMap[p.item_key] || 0) < p.dailyLimit
     }));
 
-    res.json(generateResponse(true, products, '获取成功'));
+    const categories = [
+      { key: 'function', name: '功能道具', icon: '🎯' },
+      { key: 'gift', name: '礼物', icon: '🎁' }
+    ];
+
+    res.json(generateResponse(true, { products, categories }, '获取成功'));
   } catch (error) {
     console.error('获取商品列表失败:', error);
     res.status(500).json(generateResponse(false, null, '获取商品列表失败'));
@@ -206,13 +274,158 @@ router.get('/items', async (req, res) => {
       name: p.name,
       description: p.description,
       icon: p.icon,
+      category: p.category,
+      charmValue: p.charmValue || 0,
       quantity: itemMap[p.key] || 0
-    }));
+    })).filter(p => p.quantity > 0);
 
     res.json(generateResponse(true, backpack, '获取成功'));
   } catch (error) {
     console.error('获取背包失败:', error);
     res.status(500).json(generateResponse(false, null, '获取背包失败'));
+  }
+});
+
+router.get('/gift-info', async (req, res) => {
+  try {
+    const userId = req.user.userId;
+
+    const [users] = await pool.execute(
+      'SELECT charm FROM users WHERE id = ?',
+      [userId]
+    );
+
+    if (users.length === 0) {
+      return res.status(404).json(generateResponse(false, null, '用户不存在'));
+    }
+
+    const [giftRows] = await pool.execute(`
+      SELECT rg.*, u.nickname as sender_nickname, u.avatar as sender_avatar
+      FROM received_gifts rg
+      LEFT JOIN users u ON rg.sender_id = u.id
+      WHERE rg.receiver_id = ?
+      ORDER BY rg.created_at DESC
+      LIMIT 100
+    `, [userId]);
+
+    const giftStats = {};
+    giftRows.forEach(g => {
+      if (!giftStats[g.gift_key]) {
+        giftStats[g.gift_key] = {
+          gift_key: g.gift_key,
+          gift_name: g.gift_name,
+          gift_icon: g.gift_icon,
+          count: 0
+        };
+      }
+      giftStats[g.gift_key].count++;
+    });
+
+    res.json(generateResponse(true, {
+      charm: users[0].charm,
+      receivedGifts: giftRows,
+      giftStats: Object.values(giftStats)
+    }, '获取成功'));
+  } catch (error) {
+    console.error('获取礼物信息失败:', error);
+    res.status(500).json(generateResponse(false, null, '获取礼物信息失败'));
+  }
+});
+
+router.post('/send-gift', async (req, res) => {
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+
+    const userId = req.user.userId;
+    const { receiverId, giftKey } = req.body;
+
+    if (!receiverId || !giftKey) {
+      await connection.rollback();
+      return res.status(400).json(generateResponse(false, null, '参数不完整'));
+    }
+
+    if (receiverId === userId) {
+      await connection.rollback();
+      return res.status(400).json(generateResponse(false, null, '不能送给自己'));
+    }
+
+    const gift = PRODUCTS.find(p => p.key === giftKey && p.category === 'gift');
+    if (!gift) {
+      await connection.rollback();
+      return res.status(400).json(generateResponse(false, null, '无效的礼物'));
+    }
+
+    const [receivers] = await connection.execute(
+      'SELECT id, nickname FROM users WHERE id = ?',
+      [receiverId]
+    );
+    if (receivers.length === 0) {
+      await connection.rollback();
+      return res.status(404).json(generateResponse(false, null, '接收者不存在'));
+    }
+
+    const [itemRows] = await connection.execute(
+      'SELECT id, quantity FROM user_items WHERE user_id = ? AND item_key = ? FOR UPDATE',
+      [userId, giftKey]
+    );
+    if (itemRows.length === 0 || itemRows[0].quantity <= 0) {
+      await connection.rollback();
+      return res.status(400).json(generateResponse(false, null, `${gift.name}数量不足`));
+    }
+
+    await connection.execute(
+      'UPDATE user_items SET quantity = quantity - 1 WHERE user_id = ? AND item_key = ?',
+      [userId, giftKey]
+    );
+
+    await connection.execute(
+      'UPDATE users SET charm = charm + ? WHERE id = ?',
+      [gift.charmValue, receiverId]
+    );
+
+    const giftRecordId = generateUUID();
+    await connection.execute(`
+      INSERT INTO received_gifts (id, sender_id, receiver_id, gift_key, gift_name, gift_icon, charm_value)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `, [giftRecordId, userId, receiverId, gift.key, gift.name, gift.icon, gift.charmValue]);
+
+    await connection.commit();
+
+    res.json(generateResponse(true, {
+      giftName: gift.name,
+      receiverName: receivers[0].nickname,
+      charmValue: gift.charmValue
+    }, `成功赠送${gift.name}给${receivers[0].nickname}`));
+  } catch (error) {
+    await connection.rollback();
+    console.error('赠送礼物失败:', error);
+    res.status(500).json(generateResponse(false, null, '赠送礼物失败'));
+  } finally {
+    connection.release();
+  }
+});
+
+router.get('/users/search', async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const { keyword } = req.query;
+
+    if (!keyword || keyword.trim().length === 0) {
+      return res.json(generateResponse(true, [], '请输入关键词'));
+    }
+
+    const [users] = await pool.execute(`
+      SELECT id, nickname, avatar, gender, charm
+      FROM users
+      WHERE id != ? AND (nickname LIKE ? OR username LIKE ?)
+      LIMIT 20
+    `, [userId, `%${keyword}%`, `%${keyword}%`]);
+
+    res.json(generateResponse(true, users, '获取成功'));
+  } catch (error) {
+    console.error('搜索用户失败:', error);
+    res.status(500).json(generateResponse(false, null, '搜索用户失败'));
   }
 });
 

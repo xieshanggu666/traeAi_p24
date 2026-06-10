@@ -73,6 +73,12 @@ const routes = [
     name: 'Backpack',
     component: () => import('../views/Backpack.vue'),
     meta: { title: '我的背包', requiresAuth: true }
+  },
+  {
+    path: '/gifts',
+    name: 'Gifts',
+    component: () => import('../views/Gifts.vue'),
+    meta: { title: '我的礼物', requiresAuth: true }
   }
 ];
 

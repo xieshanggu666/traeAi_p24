@@ -19,9 +19,18 @@
         </div>
       </div>
 
+      <van-tabs v-model:active="activeCategory" class="category-tabs" animated line-width="24px">
+        <van-tab
+          v-for="cat in categories"
+          :key="cat.key"
+          :name="cat.key"
+          :title="`${cat.icon} ${cat.name}`"
+        />
+      </van-tabs>
+
       <div class="product-list">
         <div
-          v-for="product in products"
+          v-for="product in filteredProducts"
           :key="product.key"
           class="product-card"
         >
@@ -31,6 +40,9 @@
             <div class="product-desc">{{ product.description }}</div>
             <div class="product-meta">
               <span class="product-price">🪙 {{ product.price }}</span>
+              <span v-if="product.charmValue" class="product-charm">
+                魅力+{{ product.charmValue }}
+              </span>
               <span v-if="product.dailyLimit > 0" class="product-limit">
                 今日已购 {{ product.todayPurchased }}/{{ product.dailyLimit }}
               </span>
@@ -46,6 +58,11 @@
             {{ product.canBuy ? '购买' : '已售罄' }}
           </van-button>
         </div>
+      </div>
+
+      <div class="empty-state" v-if="filteredProducts.length === 0 && !loading">
+        <div class="empty-icon">📦</div>
+        <div class="empty-text">暂无商品</div>
       </div>
 
       <div class="backpack-entry" @click="goToBackpack">
@@ -66,15 +83,22 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { showToast, showDialog } from 'vant';
 import { getShopProducts, buyProduct, getWelfareInfo } from '../api';
 
 const router = useRouter();
 const active = ref('shop');
+const activeCategory = ref('function');
 const products = ref([]);
+const categories = ref([]);
 const userCoins = ref(0);
+const loading = ref(false);
+
+const filteredProducts = computed(() => {
+  return products.value.filter(p => p.category === activeCategory.value);
+});
 
 onMounted(() => {
   fetchProducts();
@@ -82,10 +106,15 @@ onMounted(() => {
 });
 
 async function fetchProducts() {
+  loading.value = true;
   try {
-    products.value = await getShopProducts();
+    const result = await getShopProducts();
+    products.value = result.products;
+    categories.value = result.categories;
   } catch (error) {
     console.error('获取商品列表失败:', error);
+  } finally {
+    loading.value = false;
   }
 }
 
@@ -202,6 +231,18 @@ function goToBackpack() { router.push('/backpack'); }
   color: #667eea;
 }
 
+.category-tabs {
+  margin-top: 12px;
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+}
+
+.category-tabs :deep(.van-tab) {
+  font-size: 15px;
+  font-weight: 500;
+}
+
 .product-list {
   margin-top: 16px;
   display: flex;
@@ -251,6 +292,7 @@ function goToBackpack() { router.push('/backpack'); }
   display: flex;
   align-items: center;
   gap: 10px;
+  flex-wrap: wrap;
 }
 
 .product-price {
@@ -259,12 +301,38 @@ function goToBackpack() { router.push('/backpack'); }
   color: #ff9800;
 }
 
+.product-charm {
+  font-size: 11px;
+  color: #ff6b9d;
+  background: #fff0f5;
+  padding: 1px 8px;
+  border-radius: 8px;
+}
+
 .product-limit {
   font-size: 11px;
   color: #999;
   background: #f5f5f5;
   padding: 1px 8px;
   border-radius: 8px;
+}
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 60px 20px;
+  color: #999;
+}
+
+.empty-icon {
+  font-size: 48px;
+  margin-bottom: 10px;
+  opacity: 0.5;
+}
+
+.empty-text {
+  font-size: 14px;
 }
 
 .backpack-entry {
