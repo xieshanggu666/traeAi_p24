@@ -94,6 +94,7 @@
       <van-tabbar-item name="home" icon="home-o" @click="goToHome">首页</van-tabbar-item>
       <van-tabbar-item name="messages" icon="chat-o" :badge="totalUnread > 0 ? totalUnread : ''">消息</van-tabbar-item>
       <van-tabbar-item name="welfare" icon="gift-o" @click="goToWelfare">福利</van-tabbar-item>
+      <van-tabbar-item name="shop" icon="shop-o" @click="goToShop">商城</van-tabbar-item>
       <van-tabbar-item name="my" icon="user-o" @click="goToMy">我的</van-tabbar-item>
     </van-tabbar>
   </div>
@@ -265,6 +266,7 @@ function handleSentClick(bottle) {
 
 function goToHome() { router.push('/'); }
 function goToWelfare() { router.push('/welfare'); }
+function goToShop() { router.push('/shop'); }
 function goToMy() { router.push('/my'); }
 </script>
 

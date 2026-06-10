@@ -30,6 +30,11 @@
           <span class="action-text">每日福利</span>
           <van-icon name="arrow" size="14" color="#ccc" />
         </div>
+        <div class="action-item" @click="goToBackpack">
+          <van-icon name="bag-o" size="20" color="#07c160" />
+          <span class="action-text">我的背包</span>
+          <van-icon name="arrow" size="14" color="#ccc" />
+        </div>
       </div>
 
       <van-button
@@ -47,6 +52,7 @@
       <van-tabbar-item name="home" icon="home-o" @click="goToHome">首页</van-tabbar-item>
       <van-tabbar-item name="messages" icon="chat-o" @click="goToMessages">消息</van-tabbar-item>
       <van-tabbar-item name="welfare" icon="gift-o" @click="goToWelfare">福利</van-tabbar-item>
+      <van-tabbar-item name="shop" icon="shop-o" @click="goToShop">商城</van-tabbar-item>
       <van-tabbar-item name="my" icon="user-o">我的</van-tabbar-item>
     </van-tabbar>
   </div>
@@ -120,6 +126,8 @@ function goToHome() { router.push('/'); }
 function goToWelfare() { router.push('/welfare'); }
 function goToEditProfile() { router.push('/edit-profile'); }
 function goToMessages() { router.push('/messages'); }
+function goToShop() { router.push('/shop'); }
+function goToBackpack() { router.push('/backpack'); }
 </script>
 
 <style scoped>

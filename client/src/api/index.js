@@ -106,3 +106,27 @@ export const getDailyLimits = () => {
 export const reportUsage = (seconds) => {
   return request.post('/welfare/report-usage', { seconds });
 };
+
+export const getShopProducts = () => {
+  return request.get('/shop/products');
+};
+
+export const buyProduct = (itemKey) => {
+  return request.post('/shop/buy', { itemKey });
+};
+
+export const getBackpackItems = () => {
+  return request.get('/shop/items');
+};
+
+export const useRetroCard = (date) => {
+  return request.post('/shop/use-retro-card', { date });
+};
+
+export const useThrowCard = () => {
+  return request.post('/shop/use-throw-card');
+};
+
+export const usePickCard = () => {
+  return request.post('/shop/use-pick-card');
+};

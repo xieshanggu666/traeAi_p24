@@ -8,6 +8,7 @@ const { router: userRoutes, authenticateToken } = require('./routes/user');
 const bottleRoutes = require('./routes/bottle');
 const messageRoutes = require('./routes/message');
 const welfareRoutes = require('./routes/welfare');
+const shopRoutes = require('./routes/shop');
 
 const app = express();
 const PORT = process.env.PORT || 4022;
@@ -21,6 +22,7 @@ app.use('/api/user', userRoutes);
 app.use('/api/bottle', authenticateToken, bottleRoutes);
 app.use('/api/message', authenticateToken, messageRoutes);
 app.use('/api/welfare', authenticateToken, welfareRoutes);
+app.use('/api/shop', authenticateToken, shopRoutes);
 
 app.get('/api/health', (req, res) => {
   res.json({

@@ -61,6 +61,18 @@ const routes = [
     name: 'Welfare',
     component: () => import('../views/Welfare.vue'),
     meta: { title: '福利', requiresAuth: true }
+  },
+  {
+    path: '/shop',
+    name: 'Shop',
+    component: () => import('../views/Shop.vue'),
+    meta: { title: '商城', requiresAuth: true }
+  },
+  {
+    path: '/backpack',
+    name: 'Backpack',
+    component: () => import('../views/Backpack.vue'),
+    meta: { title: '我的背包', requiresAuth: true }
   }
 ];
 
