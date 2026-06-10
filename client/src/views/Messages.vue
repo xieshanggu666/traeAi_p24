@@ -9,7 +9,7 @@
 
     <van-pull-refresh v-model="refreshing" @refresh="onRefresh">
       <van-tabs v-model:active="activeTab" sticky offset-top="84" lazy-render>
-        <van-tab title="待回复" :badge="repliedBottles.length > 0 ? repliedBottles.length : ''">
+        <van-tab title="待回复" :badge="unreadRepliedCount > 0 ? unreadRepliedCount : ''">
           <div class="section" v-if="repliedBottles.length > 0 || loading">
             <div class="section-list">
               <van-swipe-cell v-for="bottle in repliedBottles" :key="bottle.id">
@@ -47,7 +47,7 @@
           </div>
         </van-tab>
 
-        <van-tab title="我的发起" :badge="sentBottles.length > 0 ? sentBottles.length : ''">
+        <van-tab title="我的发起">
           <div class="section" v-if="sentBottles.length > 0 || loading">
             <div class="section-list">
               <van-swipe-cell v-for="bottle in sentBottles" :key="bottle.id">
@@ -134,6 +134,16 @@ const repliedBottles = computed(() => {
       const bTime = b.latest_message_time ? new Date(b.latest_message_time) : new Date(b.created_at);
       return bTime - aTime;
     });
+});
+
+const unreadRepliedCount = computed(() => {
+  let count = 0;
+  for (const b of repliedBottles.value) {
+    if (b.unread_count > 0 && b.latest_sender_id !== currentUserId.value) {
+      count += b.unread_count;
+    }
+  }
+  return count;
 });
 
 const sentBottles = computed(() => {

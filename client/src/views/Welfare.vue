@@ -13,7 +13,9 @@
         <div class="coin-right">
           <div class="today-coin">
             <span class="today-label">今日获取</span>
-            <span class="today-value">+{{ welfareInfo.todayCoins }}</span>
+            <span class="today-value" :class="welfareInfo.todayCoins >= 0 ? 'positive' : 'negative'">
+              {{ formatAmount(welfareInfo.todayCoins) }}
+            </span>
           </div>
           <van-icon name="arrow" size="14" color="#fff" />
         </div>
@@ -170,7 +172,9 @@
               <div class="record-source">{{ record.source }}</div>
               <div class="record-time">{{ formatRecordTime(record.created_at) }}</div>
             </div>
-            <div class="record-amount">+{{ record.amount }}</div>
+            <div class="record-amount" :class="record.amount >= 0 ? 'positive' : 'negative'">
+              {{ formatAmount(record.amount) }}
+            </div>
           </div>
           <div class="empty-records" v-if="coinRecords.length === 0">
             暂无记录
@@ -413,6 +417,12 @@ function formatProgress(task) {
   return '';
 }
 
+function formatAmount(amount) {
+  if (amount > 0) return `+${amount}`;
+  if (amount < 0) return `-${Math.abs(amount)}`;
+  return '0';
+}
+
 function formatRecordTime(time) {
   if (!time) return '';
   const d = new Date(time);
@@ -518,6 +528,14 @@ function goToShop() {
   font-size: 18px;
   font-weight: bold;
   color: #ffd700;
+}
+
+.today-value.positive {
+  color: #ffd700;
+}
+
+.today-value.negative {
+  color: #ff6b6b;
 }
 
 .checkin-section,
@@ -781,6 +799,14 @@ function goToShop() {
   font-size: 16px;
   font-weight: bold;
   color: #ff9800;
+}
+
+.record-amount.positive {
+  color: #ff9800;
+}
+
+.record-amount.negative {
+  color: #ff6b6b;
 }
 
 .empty-records {
