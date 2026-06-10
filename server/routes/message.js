@@ -23,7 +23,7 @@ router.get('/:bottleId', async (req, res) => {
     }
 
     let query = 
-      'SELECT m.id, m.bottle_id, m.sender_id, m.receiver_id, m.content, m.is_read, m.created_at, ' +
+      'SELECT m.id, m.bottle_id, m.sender_id, m.receiver_id, m.content, m.type, m.is_read, m.created_at, ' +
       'u.nickname as sender_nickname, u.avatar as sender_avatar ' +
       'FROM messages m ' +
       'LEFT JOIN users u ON m.sender_id = u.id ' +
@@ -63,14 +63,15 @@ router.post('/send', async (req, res) => {
     }
 
     const messageId = generateUUID();
+    const type = req.body.type || 'text';
 
     await pool.execute(
-      'INSERT INTO messages (id, bottle_id, sender_id, receiver_id, content) VALUES (?, ?, ?, ?, ?)',
-      [messageId, bottleId, senderId, receiverId, content.trim()]
+      'INSERT INTO messages (id, bottle_id, sender_id, receiver_id, content, type) VALUES (?, ?, ?, ?, ?, ?)',
+      [messageId, bottleId, senderId, receiverId, content.trim(), type]
     );
 
     const [message] = await pool.execute(
-      'SELECT m.id, m.bottle_id, m.sender_id, m.receiver_id, m.content, m.is_read, m.created_at, ' +
+      'SELECT m.id, m.bottle_id, m.sender_id, m.receiver_id, m.content, m.type, m.is_read, m.created_at, ' +
       'u.nickname as sender_nickname, u.avatar as sender_avatar ' +
       'FROM messages m ' +
       'LEFT JOIN users u ON m.sender_id = u.id ' +

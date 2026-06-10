@@ -5,6 +5,16 @@ const { generateUUID, generateResponse } = require('../utils/helper');
 
 const PRODUCTS = [
   {
+    key: 'function_prop',
+    name: '商品功能道具',
+    description: '神秘的功能道具，可用于特殊用途',
+    price: 0,
+    dailyLimit: 0,
+    icon: '🎁',
+    category: 'function',
+    hidden: true
+  },
+  {
     key: 'retro_card',
     name: '补签卡',
     description: '可在日历上点击未签到的日期使用，成功补签对应日期',
@@ -141,11 +151,13 @@ router.get('/products', async (req, res) => {
       purchaseMap[p.item_key] = p.count;
     });
 
-    const products = PRODUCTS.map(p => ({
-      ...p,
-      todayPurchased: purchaseMap[p.item_key] || 0,
-      canBuy: p.dailyLimit === 0 || (purchaseMap[p.item_key] || 0) < p.dailyLimit
-    }));
+    const products = PRODUCTS
+      .filter(p => !p.hidden)
+      .map(p => ({
+        ...p,
+        todayPurchased: purchaseMap[p.item_key] || 0,
+        canBuy: p.dailyLimit === 0 || (purchaseMap[p.item_key] || 0) < p.dailyLimit
+      }));
 
     const categories = [
       { key: 'function', name: '功能道具', icon: '🎯' },
@@ -586,6 +598,104 @@ router.post('/use-pick-card', async (req, res) => {
     await connection.rollback();
     console.error('使用捞瓶卡失败:', error);
     res.status(500).json(generateResponse(false, null, '使用捞瓶卡失败'));
+  } finally {
+    connection.release();
+  }
+});
+
+router.post('/send-chat-gift', async (req, res) => {
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+
+    const userId = req.user.userId;
+    const { bottleId, receiverId, giftKey } = req.body;
+
+    if (!bottleId || !receiverId || !giftKey) {
+      await connection.rollback();
+      return res.status(400).json(generateResponse(false, null, '参数不完整'));
+    }
+
+    if (receiverId === userId) {
+      await connection.rollback();
+      return res.status(400).json(generateResponse(false, null, '不能送给自己'));
+    }
+
+    const gift = PRODUCTS.find(p => p.key === giftKey && p.category === 'gift');
+    if (!gift) {
+      await connection.rollback();
+      return res.status(400).json(generateResponse(false, null, '无效的礼物'));
+    }
+
+    const [receivers] = await connection.execute(
+      'SELECT id, nickname FROM users WHERE id = ?',
+      [receiverId]
+    );
+    if (receivers.length === 0) {
+      await connection.rollback();
+      return res.status(404).json(generateResponse(false, null, '接收者不存在'));
+    }
+
+    const [itemRows] = await connection.execute(
+      'SELECT id, quantity FROM user_items WHERE user_id = ? AND item_key = ? FOR UPDATE',
+      [userId, giftKey]
+    );
+    if (itemRows.length === 0 || itemRows[0].quantity <= 0) {
+      await connection.rollback();
+      return res.status(400).json(generateResponse(false, null, `${gift.name}数量不足`));
+    }
+
+    await connection.execute(
+      'UPDATE user_items SET quantity = quantity - 1 WHERE user_id = ? AND item_key = ?',
+      [userId, giftKey]
+    );
+
+    await connection.execute(
+      'UPDATE users SET charm = charm + ? WHERE id = ?',
+      [gift.charmValue, receiverId]
+    );
+
+    const giftRecordId = generateUUID();
+    await connection.execute(`
+      INSERT INTO received_gifts (id, sender_id, receiver_id, gift_key, gift_name, gift_icon, charm_value)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `, [giftRecordId, userId, receiverId, gift.key, gift.name, gift.icon, gift.charmValue]);
+
+    const messageId = generateUUID();
+    const messageContent = JSON.stringify({
+      type: 'gift',
+      giftKey: gift.key,
+      giftName: gift.name,
+      giftIcon: gift.icon,
+      charmValue: gift.charmValue
+    });
+
+    await connection.execute(
+      'INSERT INTO messages (id, bottle_id, sender_id, receiver_id, content, type) VALUES (?, ?, ?, ?, ?, ?)',
+      [messageId, bottleId, userId, receiverId, messageContent, 'gift']
+    );
+
+    const [message] = await connection.execute(
+      'SELECT m.id, m.bottle_id, m.sender_id, m.receiver_id, m.content, m.type, m.is_read, m.created_at, ' +
+      'u.nickname as sender_nickname, u.avatar as sender_avatar ' +
+      'FROM messages m ' +
+      'LEFT JOIN users u ON m.sender_id = u.id ' +
+      'WHERE m.id = ?',
+      [messageId]
+    );
+
+    await connection.commit();
+
+    res.json(generateResponse(true, {
+      message: message[0],
+      giftName: gift.name,
+      receiverName: receivers[0].nickname,
+      charmValue: gift.charmValue
+    }, `成功赠送${gift.name}给${receivers[0].nickname}`));
+  } catch (error) {
+    await connection.rollback();
+    console.error('聊天赠送礼物失败:', error);
+    res.status(500).json(generateResponse(false, null, '赠送礼物失败'));
   } finally {
     connection.release();
   }

@@ -26,14 +26,42 @@
       >
         <AvatarDisplay :avatar="otherUser?.avatar || msg.sender_avatar" :size="36" class="message-avatar" v-if="msg.sender_id !== currentUserId" />
         <template v-if="msg.sender_id !== currentUserId">
-          <div class="message-bubble">
-            <div class="message-content">{{ msg.content }}</div>
+          <div class="message-bubble" :class="{ 'gift-bubble': isGiftMessage(msg) }">
+            <template v-if="isGiftMessage(msg)">
+              <div class="gift-message">
+                <div class="gift-label">🎁 赠送了礼物</div>
+                <div class="gift-content">
+                  <span class="gift-icon">{{ parseGiftContent(msg.content).giftIcon }}</span>
+                  <div class="gift-info">
+                    <div class="gift-name">{{ parseGiftContent(msg.content).giftName }}</div>
+                    <div class="gift-charm">魅力值 +{{ parseGiftContent(msg.content).charmValue }}</div>
+                  </div>
+                </div>
+              </div>
+            </template>
+            <template v-else>
+              <div class="message-content">{{ msg.content }}</div>
+            </template>
             <div class="message-time">{{ formatTime(msg.created_at) }}</div>
           </div>
         </template>
         <template v-else>
-          <div class="message-bubble">
-            <div class="message-content">{{ msg.content }}</div>
+          <div class="message-bubble" :class="{ 'gift-bubble-mine': isGiftMessage(msg) }">
+            <template v-if="isGiftMessage(msg)">
+              <div class="gift-message">
+                <div class="gift-label">🎁 赠送了礼物</div>
+                <div class="gift-content">
+                  <span class="gift-icon">{{ parseGiftContent(msg.content).giftIcon }}</span>
+                  <div class="gift-info">
+                    <div class="gift-name">{{ parseGiftContent(msg.content).giftName }}</div>
+                    <div class="gift-charm">魅力值 +{{ parseGiftContent(msg.content).charmValue }}</div>
+                  </div>
+                </div>
+              </div>
+            </template>
+            <template v-else>
+              <div class="message-content">{{ msg.content }}</div>
+            </template>
             <div class="message-time">{{ formatTime(msg.created_at) }}</div>
           </div>
           <AvatarDisplay :avatar="currentUser?.avatar" :size="36" class="message-avatar mine" />
@@ -55,6 +83,9 @@
     </div>
 
     <div class="input-area">
+      <div class="gift-btn" @click="showGiftPanel = true">
+        <van-icon name="gift-o" size="24" color="#667eea" />
+      </div>
       <textarea
         v-model="messageContent"
         class="message-input"
@@ -74,15 +105,65 @@
         发送
       </van-button>
     </div>
+
+    <van-popup
+      v-model:show="showGiftPanel"
+      round
+      position="bottom"
+      :style="{ maxHeight: '70vh' }"
+    >
+      <div class="gift-panel">
+        <div class="popup-header">
+          <div class="popup-title">🎁 选择礼物</div>
+          <van-icon name="cross" size="20" @click="showGiftPanel = false" />
+        </div>
+        <div class="gift-tip">赠送礼物可增加对方魅力值，表达心意吧~</div>
+        <div class="gift-list" v-if="giftItems.length > 0">
+          <div
+            v-for="item in giftItems"
+            :key="item.key"
+            class="gift-card"
+            :class="{ 'gift-selected': selectedGift?.key === item.key }"
+            @click="selectedGift = item"
+          >
+            <div class="gift-card-icon">{{ item.icon }}</div>
+            <div class="gift-card-name">{{ item.name }}</div>
+            <div class="gift-card-charm">魅力+{{ item.charmValue }}</div>
+            <div class="gift-card-qty">数量: {{ item.quantity }}</div>
+          </div>
+        </div>
+        <div class="empty-gifts" v-else-if="!giftLoading">
+          <div class="empty-gift-icon">🎁</div>
+          <div class="empty-gift-text">您还没有礼物</div>
+          <div class="empty-gift-desc">去商城购买礼物吧</div>
+          <van-button type="primary" size="small" style="margin-top: 12px;" @click="goToShop">
+            前往商城
+          </van-button>
+        </div>
+        <van-loading v-if="giftLoading" color="#1989fa" style="display: block; text-align: center; padding: 40px 0;">加载中...</van-loading>
+        <div class="gift-footer" v-if="giftItems.length > 0">
+          <van-button
+            type="primary"
+            round
+            block
+            :disabled="!selectedGift || isSendingGift"
+            :loading="isSendingGift"
+            @click="handleSendGift"
+          >
+            {{ selectedGift ? `赠送「${selectedGift.name}」` : '请选择礼物' }}
+          </van-button>
+        </div>
+      </div>
+    </van-popup>
   </div>
 </template>
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { showToast } from 'vant';
+import { showToast, showDialog } from 'vant';
 import { getUser } from '../utils/storage';
-import { getMessages, sendMessage as apiSendMessage, getBottleDetail } from '../api';
+import { getMessages, sendMessage as apiSendMessage, getBottleDetail, getBackpackItems, sendChatGift } from '../api';
 import AvatarDisplay from '../components/AvatarDisplay.vue';
 
 const route = useRoute();
@@ -100,6 +181,11 @@ const isSending = ref(false);
 const loading = ref(false);
 const messageListRef = ref(null);
 const textareaRef = ref(null);
+const showGiftPanel = ref(false);
+const giftItems = ref([]);
+const selectedGift = ref(null);
+const giftLoading = ref(false);
+const isSendingGift = ref(false);
 
 let timer = null;
 
@@ -117,6 +203,14 @@ onMounted(() => {
   
   initChat();
   timer = setInterval(fetchMessages, 3000);
+});
+
+watch(showGiftPanel, (val) => {
+  if (val) {
+    fetchGiftItems();
+  } else {
+    selectedGift.value = null;
+  }
 });
 
 onUnmounted(() => {
@@ -210,6 +304,70 @@ function scrollToBottom() {
 
 function goBack() {
   router.back();
+}
+
+function isGiftMessage(msg) {
+  return msg.type === 'gift' || (msg.content && msg.content.startsWith && msg.content.startsWith('{"type'));
+}
+
+function parseGiftContent(content) {
+  try {
+    if (typeof content === 'string' && content.startsWith('{')) {
+      return JSON.parse(content);
+    }
+    return { giftName: '未知礼物', giftIcon: '🎁', charmValue: 0 };
+  } catch {
+    return { giftName: '未知礼物', giftIcon: '🎁', charmValue: 0 };
+  }
+}
+
+async function fetchGiftItems() {
+  giftLoading.value = true;
+  try {
+    const items = await getBackpackItems();
+    giftItems.value = items.filter(item => item.category === 'gift');
+  } catch (error) {
+    console.error('获取礼物列表失败:', error);
+  } finally {
+    giftLoading.value = false;
+  }
+}
+
+async function handleSendGift() {
+  if (!selectedGift.value || !otherUserId.value) return;
+  
+  try {
+    await showDialog({
+      title: '确认赠送',
+      message: `确定将「${selectedGift.value.name}」赠送给「${otherUser.value?.nickname || '对方'}」吗？\n对方将获得魅力值+${selectedGift.value.charmValue}`,
+      showCancelButton: true,
+      confirmButtonText: '赠送',
+      cancelButtonText: '取消'
+    });
+
+    isSendingGift.value = true;
+    const result = await sendChatGift(bottleId, otherUserId.value, selectedGift.value.key);
+    
+    if (result.message) {
+      messages.value.push(result.message);
+    }
+    
+    showToast(result._message || '赠送成功');
+    showGiftPanel.value = false;
+    scrollToBottom();
+    await fetchGiftItems();
+  } catch (error) {
+    if (error.isBusinessError || error.httpMessage || error.businessMessage) {
+      showToast(error.businessMessage || error.httpMessage || '赠送失败');
+    }
+  } finally {
+    isSendingGift.value = false;
+  }
+}
+
+function goToShop() {
+  showGiftPanel.value = false;
+  router.push('/shop');
 }
 </script>
 
@@ -403,5 +561,198 @@ function goBack() {
 
 .send-button:disabled {
   background: #ccc;
+}
+
+.gift-btn {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: #f5f5f5;
+  cursor: pointer;
+  transition: background 0.2s;
+  flex-shrink: 0;
+}
+
+.gift-btn:active {
+  background: #e8e8e8;
+}
+
+.gift-bubble .message-content {
+  background: transparent !important;
+  padding: 0 !important;
+  box-shadow: none !important;
+}
+
+.gift-bubble-mine .message-content {
+  background: transparent !important;
+  padding: 0 !important;
+  box-shadow: none !important;
+}
+
+.gift-message {
+  background: linear-gradient(135deg, #fff0f5 0%, #ffe0ec 100%);
+  border-radius: 16px;
+  padding: 14px 16px;
+  min-width: 200px;
+}
+
+.is-mine .gift-message {
+  background: linear-gradient(135deg, #667eea20 0%, #764ba220 100%);
+}
+
+.gift-label {
+  font-size: 12px;
+  color: #ff6b9d;
+  font-weight: 500;
+  margin-bottom: 10px;
+}
+
+.is-mine .gift-label {
+  color: #667eea;
+}
+
+.gift-content {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.gift-icon {
+  font-size: 40px;
+  flex-shrink: 0;
+}
+
+.gift-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.gift-name {
+  font-size: 15px;
+  font-weight: bold;
+  color: #333;
+  margin-bottom: 4px;
+}
+
+.gift-charm {
+  font-size: 12px;
+  color: #ff6b9d;
+  font-weight: 500;
+}
+
+.is-mine .gift-charm {
+  color: #667eea;
+}
+
+.gift-panel {
+  padding: 20px;
+}
+
+.popup-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.popup-title {
+  font-size: 18px;
+  font-weight: bold;
+  color: #333;
+}
+
+.gift-tip {
+  background: linear-gradient(135deg, #fff0f5 0%, #ffe0ec 100%);
+  color: #ff6b9d;
+  font-size: 13px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  margin-bottom: 16px;
+  text-align: center;
+}
+
+.gift-list {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  max-height: 45vh;
+  overflow-y: auto;
+  padding-bottom: 12px;
+}
+
+.gift-card {
+  background: #f9f9f9;
+  border-radius: 14px;
+  padding: 14px 10px;
+  text-align: center;
+  cursor: pointer;
+  border: 2px solid transparent;
+  transition: all 0.2s;
+}
+
+.gift-card:active {
+  transform: scale(0.96);
+}
+
+.gift-selected {
+  background: linear-gradient(135deg, #fff0f5 0%, #ffe0ec 100%);
+  border-color: #ff6b9d;
+}
+
+.gift-card-icon {
+  font-size: 36px;
+  margin-bottom: 6px;
+}
+
+.gift-card-name {
+  font-size: 13px;
+  font-weight: bold;
+  color: #333;
+  margin-bottom: 4px;
+}
+
+.gift-card-charm {
+  font-size: 11px;
+  color: #ff6b9d;
+  margin-bottom: 4px;
+}
+
+.gift-card-qty {
+  font-size: 11px;
+  color: #999;
+}
+
+.empty-gifts {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 40px 20px;
+  color: #999;
+}
+
+.empty-gift-icon {
+  font-size: 56px;
+  margin-bottom: 14px;
+  opacity: 0.4;
+}
+
+.empty-gift-text {
+  font-size: 16px;
+  font-weight: bold;
+  color: #666;
+  margin-bottom: 4px;
+}
+
+.empty-gift-desc {
+  font-size: 13px;
+}
+
+.gift-footer {
+  padding-top: 16px;
+  border-top: 1px solid #f0f0f0;
+  margin-top: 8px;
 }
 </style>

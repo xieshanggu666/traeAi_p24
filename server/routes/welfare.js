@@ -18,9 +18,33 @@ const DAILY_TASKS = [
 ];
 
 const GIFTS = [
-  { days: 7, minAmount: 70, maxAmount: 210 },
-  { days: 14, minAmount: 140, maxAmount: 420 },
-  { days: 21, minAmount: 280, maxAmount: 840 }
+  { 
+    days: 7, 
+    minAmount: 70, 
+    maxAmount: 210, 
+    items: [
+      { key: 'function_prop', name: '商品功能道具', icon: '🎁', quantity: 1 },
+      { key: 'gift_flower', name: '鲜花', icon: '💐', quantity: 5 }
+    ]
+  },
+  { 
+    days: 14, 
+    minAmount: 140, 
+    maxAmount: 420, 
+    items: [
+      { key: 'function_prop', name: '商品功能道具', icon: '🎁', quantity: 2 },
+      { key: 'gift_flower', name: '鲜花', icon: '💐', quantity: 10 }
+    ]
+  },
+  { 
+    days: 21, 
+    minAmount: 280, 
+    maxAmount: 840, 
+    items: [
+      { key: 'function_prop', name: '商品功能道具', icon: '🎁', quantity: 3 },
+      { key: 'gift_cake', name: '蛋糕', icon: '🎂', quantity: 5 }
+    ]
+  }
 ];
 
 function getLocalDateStr(date) {
@@ -191,12 +215,16 @@ router.get('/checkin-status', async (req, res) => {
 });
 
 router.post('/claim-gift', async (req, res) => {
+  const connection = await pool.getConnection();
   try {
+    await connection.beginTransaction();
+
     const userId = req.user.userId;
     const { giftDays } = req.body;
 
     const gift = GIFTS.find(g => g.days === giftDays);
     if (!gift) {
+      await connection.rollback();
       return res.status(400).json(generateResponse(false, null, '无效的礼包'));
     }
 
@@ -204,38 +232,77 @@ router.post('/claim-gift', async (req, res) => {
     const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
     const { startDate, endDate } = getMonthRange(now.getFullYear(), now.getMonth() + 1);
 
-    const [existing] = await pool.execute(
+    const [existing] = await connection.execute(
       'SELECT id FROM gift_claims WHERE user_id = ? AND gift_days = ? AND month = ?',
       [userId, giftDays, currentMonth]
     );
 
     if (existing.length > 0) {
+      await connection.rollback();
       return res.status(400).json(generateResponse(false, null, '该礼包本月已领取'));
     }
 
-    const [checkins] = await pool.execute(
+    const [checkins] = await connection.execute(
       'SELECT COUNT(*) as count FROM checkins WHERE user_id = ? AND checkin_date >= ? AND checkin_date < ?',
       [userId, startDate, endDate]
     );
 
     if (checkins[0].count < giftDays) {
+      await connection.rollback();
       return res.status(400).json(generateResponse(false, null, `本月签到不足${giftDays}天，无法领取`));
     }
 
     const amount = Math.floor(Math.random() * (gift.maxAmount - gift.minAmount + 1)) + gift.minAmount;
     const claimId = generateUUID();
 
-    await pool.execute(
+    await connection.execute(
       'INSERT INTO gift_claims (id, user_id, gift_days, month, amount) VALUES (?, ?, ?, ?, ?)',
       [claimId, userId, giftDays, currentMonth, amount]
     );
 
-    await addCoins(userId, amount, 'gift', `${giftDays}天签到礼包`);
+    await connection.execute(
+      'UPDATE users SET coins = coins + ? WHERE id = ?',
+      [amount, userId]
+    );
+    const coinRecordId = generateUUID();
+    await connection.execute(
+      'INSERT INTO coin_records (id, user_id, amount, type, source) VALUES (?, ?, ?, ?, ?)',
+      [coinRecordId, userId, amount, 'gift', `${giftDays}天签到礼包`]
+    );
 
-    res.json(generateResponse(true, { amount, giftDays }, `领取成功，获得${amount}漂流币`));
+    for (const item of gift.items) {
+      const [existingItems] = await connection.execute(
+        'SELECT id, quantity FROM user_items WHERE user_id = ? AND item_key = ? FOR UPDATE',
+        [userId, item.key]
+      );
+
+      if (existingItems.length > 0) {
+        await connection.execute(
+          'UPDATE user_items SET quantity = quantity + ? WHERE user_id = ? AND item_key = ?',
+          [item.quantity, userId, item.key]
+        );
+      } else {
+        const itemId = generateUUID();
+        await connection.execute(
+          'INSERT INTO user_items (id, user_id, item_key, quantity) VALUES (?, ?, ?, ?)',
+          [itemId, userId, item.key, item.quantity]
+        );
+      }
+    }
+
+    await connection.commit();
+
+    res.json(generateResponse(true, { 
+      amount, 
+      giftDays,
+      items: gift.items
+    }, `领取成功，获得${amount}漂流币及丰厚道具`));
   } catch (error) {
+    await connection.rollback();
     console.error('领取礼包失败:', error);
     res.status(500).json(generateResponse(false, null, '领取礼包失败'));
+  } finally {
+    connection.release();
   }
 });
 

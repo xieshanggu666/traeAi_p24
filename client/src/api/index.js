@@ -142,3 +142,7 @@ export const sendGift = (receiverId, giftKey) => {
 export const searchUsers = (keyword) => {
   return request.get('/shop/users/search', { params: { keyword } });
 };
+
+export const sendChatGift = (bottleId, receiverId, giftKey) => {
+  return request.post('/shop/send-chat-gift', { bottleId, receiverId, giftKey });
+};

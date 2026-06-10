@@ -24,6 +24,10 @@
       <div class="checkin-section">
         <div class="section-header">
           <div class="section-title">📅 每日签到</div>
+          <div class="rules-btn" @click="showRules = true">
+            <van-icon name="info-o" size="16" />
+            <span>规则</span>
+          </div>
         </div>
         <van-button
           type="primary"
@@ -49,7 +53,9 @@
           >
             <div class="gift-icon">{{ gift.claimed ? '🎁' : (gift.canClaim ? '🎊' : '🔒') }}</div>
             <div class="gift-days">{{ gift.days }}天礼包</div>
-            <div class="gift-range">{{ gift.min }}-{{ gift.max }}</div>
+            <div class="gift-items-preview">
+              <span v-for="(item, idx) in gift.items.slice(0, 2)" :key="idx" class="gift-preview-icon">{{ item.icon }}</span>
+            </div>
           </div>
         </div>
       </div>
@@ -183,6 +189,58 @@
       </div>
     </van-popup>
 
+    <van-popup
+      v-model:show="showRules"
+      round
+      position="bottom"
+      :style="{ maxHeight: '85vh' }"
+    >
+      <div class="rules-popup">
+        <div class="popup-header">
+          <div class="popup-title">📋 签到规则</div>
+          <van-icon name="cross" size="20" @click="showRules = false" />
+        </div>
+        <div class="rules-content">
+          <div class="rule-section">
+            <div class="rule-section-title">📝 领取条件</div>
+            <ul class="rule-list">
+              <li>每日签到可获得 <span class="highlight">10漂流币</span> 奖励</li>
+              <li>签到礼包按自然月统计，当月签到天数达标即可领取</li>
+              <li>每档礼包每月仅可领取一次</li>
+              <li>补签卡可用于补签过去未签到的日期</li>
+            </ul>
+          </div>
+          <div class="rule-section">
+            <div class="rule-section-title">🎁 礼包奖励</div>
+            <div class="gift-rule-list">
+              <div v-for="gift in giftRules" :key="gift.days" class="gift-rule-item">
+                <div class="gift-rule-header">
+                  <span class="gift-rule-days">{{ gift.days }}天礼包</span>
+                  <span class="gift-rule-coins">🪙 {{ gift.min }}-{{ gift.max }}</span>
+                </div>
+                <div class="gift-rule-items">
+                  <div v-for="(item, idx) in gift.items" :key="idx" class="gift-rule-detail">
+                    <span class="gift-rule-icon">{{ item.icon }}</span>
+                    <span class="gift-rule-name">{{ item.name }}</span>
+                    <span class="gift-rule-qty">×{{ item.quantity }}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="rule-section">
+            <div class="rule-section-title">💡 温馨提示</div>
+            <ul class="rule-list">
+              <li>每日签到状态会在次日00:00刷新</li>
+              <li>请及时领取礼包，过期不补</li>
+              <li>道具奖励将自动发放到您的背包中</li>
+              <li>如有疑问请联系客服</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </van-popup>
+
     <van-tabbar v-model="active" active-color="#1989fa">
       <van-tabbar-item name="home" icon="home-o" @click="goToHome">首页</van-tabbar-item>
       <van-tabbar-item name="messages" icon="chat-o" @click="goToMessages">消息</van-tabbar-item>
@@ -214,11 +272,42 @@ const welfareInfo = ref({ totalCoins: 0, todayCoins: 0 });
 const tasks = ref({ onceTasks: [], dailyTasks: [] });
 const showCheckinPopup = ref(false);
 const showRecords = ref(false);
+const showRules = ref(false);
 const coinRecords = ref([]);
 const calYear = ref(new Date().getFullYear());
 const calMonth = ref(new Date().getMonth() + 1);
 const checkinDates = ref([]);
 const claimedGifts = ref([]);
+
+const giftRules = [
+  { 
+    days: 7, 
+    min: 70, 
+    max: 210, 
+    items: [
+      { key: 'function_prop', name: '商品功能道具', icon: '🎁', quantity: 1 },
+      { key: 'gift_flower', name: '鲜花', icon: '💐', quantity: 5 }
+    ]
+  },
+  { 
+    days: 14, 
+    min: 140, 
+    max: 420, 
+    items: [
+      { key: 'function_prop', name: '商品功能道具', icon: '🎁', quantity: 2 },
+      { key: 'gift_flower', name: '鲜花', icon: '💐', quantity: 10 }
+    ]
+  },
+  { 
+    days: 21, 
+    min: 280, 
+    max: 840, 
+    items: [
+      { key: 'function_prop', name: '商品功能道具', icon: '🎁', quantity: 3 },
+      { key: 'gift_cake', name: '蛋糕', icon: '🎂', quantity: 5 }
+    ]
+  }
+];
 
 const todayStr = computed(() => {
   const d = new Date();
@@ -232,16 +321,11 @@ const todayCheckedIn = computed(() => {
 const weekdays = ['日', '一', '二', '三', '四', '五', '六'];
 
 const gifts = computed(() => {
-  const giftConfigs = [
-    { days: 7, min: 70, max: 210 },
-    { days: 14, min: 140, max: 420 },
-    { days: 21, min: 280, max: 840 }
-  ];
   const now = new Date();
   const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
   const isCurrentMonth = calYear.value === now.getFullYear() && calMonth.value === now.getMonth() + 1;
 
-  return giftConfigs.map(g => {
+  return giftRules.map(g => {
     const checkinCount = checkinDates.value.length;
     const canClaim = isCurrentMonth && checkinCount >= g.days;
     const claimed = isCurrentMonth && claimedGifts.value.includes(g.days);
@@ -814,5 +898,140 @@ function goToShop() {
   padding: 40px 0;
   color: #999;
   font-size: 14px;
+}
+
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.rules-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+  color: #667eea;
+  cursor: pointer;
+  padding: 4px 10px;
+  border-radius: 12px;
+  background: rgba(102, 126, 234, 0.08);
+  transition: background 0.2s;
+}
+
+.rules-btn:active {
+  background: rgba(102, 126, 234, 0.18);
+}
+
+.gift-items-preview {
+  display: flex;
+  gap: 2px;
+  margin-top: 4px;
+}
+
+.gift-preview-icon {
+  font-size: 14px;
+}
+
+.rules-popup {
+  padding: 20px;
+}
+
+.rules-content {
+  max-height: 70vh;
+  overflow-y: auto;
+}
+
+.rule-section {
+  margin-bottom: 24px;
+}
+
+.rule-section:last-child {
+  margin-bottom: 0;
+}
+
+.rule-section-title {
+  font-size: 16px;
+  font-weight: bold;
+  color: #333;
+  margin-bottom: 12px;
+  padding-left: 8px;
+  border-left: 3px solid #667eea;
+}
+
+.rule-list {
+  padding-left: 20px;
+  margin: 0;
+}
+
+.rule-list li {
+  font-size: 14px;
+  color: #666;
+  line-height: 2;
+}
+
+.highlight {
+  color: #ff9800;
+  font-weight: bold;
+}
+
+.gift-rule-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.gift-rule-item {
+  background: #f8f9ff;
+  border-radius: 12px;
+  padding: 14px;
+  border: 1px solid #e8ebff;
+}
+
+.gift-rule-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.gift-rule-days {
+  font-size: 15px;
+  font-weight: bold;
+  color: #333;
+}
+
+.gift-rule-coins {
+  font-size: 13px;
+  color: #ff9800;
+  font-weight: bold;
+}
+
+.gift-rule-items {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.gift-rule-detail {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: #666;
+}
+
+.gift-rule-icon {
+  font-size: 18px;
+}
+
+.gift-rule-name {
+  flex: 1;
+}
+
+.gift-rule-qty {
+  color: #667eea;
+  font-weight: bold;
 }
 </style>
