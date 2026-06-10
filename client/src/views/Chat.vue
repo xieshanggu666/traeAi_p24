@@ -307,18 +307,35 @@ function goBack() {
 }
 
 function isGiftMessage(msg) {
-  return msg.type === 'gift' || (msg.content && msg.content.startsWith && msg.content.startsWith('{"type'));
+  if (!msg) return false;
+  if (msg.type === 'gift') return true;
+  if (!msg.content || typeof msg.content !== 'string') return false;
+  const trimmed = msg.content.trim();
+  if (!trimmed.startsWith('{')) return false;
+  try {
+    const parsed = JSON.parse(trimmed);
+    return parsed && parsed.type === 'gift';
+  } catch {
+    return false;
+  }
 }
 
 function parseGiftContent(content) {
-  try {
-    if (typeof content === 'string' && content.startsWith('{')) {
-      return JSON.parse(content);
+  if (typeof content === 'string') {
+    try {
+      const parsed = JSON.parse(content.trim());
+      if (parsed && parsed.type === 'gift') {
+        return {
+          giftName: parsed.giftName || '未知礼物',
+          giftIcon: parsed.giftIcon || '🎁',
+          charmValue: parsed.charmValue || 0
+        };
+      }
+    } catch {
+      // ignore
     }
-    return { giftName: '未知礼物', giftIcon: '🎁', charmValue: 0 };
-  } catch {
-    return { giftName: '未知礼物', giftIcon: '🎁', charmValue: 0 };
   }
+  return { giftName: '未知礼物', giftIcon: '🎁', charmValue: 0 };
 }
 
 async function fetchGiftItems() {

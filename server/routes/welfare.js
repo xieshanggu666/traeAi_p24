@@ -34,9 +34,9 @@ const GIFTS = [
     minAmount: 140, 
     maxAmount: 420, 
     items: [
-      { key: 'retro_card', name: '补签卡', icon: '📅', quantity: 1 },
-      { key: 'throw_card', name: '扔瓶卡', icon: '📤', quantity: 1 },
-      { key: 'pick_card', name: '捞瓶卡', icon: '📥', quantity: 1 },
+      { key: 'retro_card', name: '补签卡', icon: '📅', quantity: 2 },
+      { key: 'throw_card', name: '扔瓶卡', icon: '📤', quantity: 2 },
+      { key: 'pick_card', name: '捞瓶卡', icon: '📥', quantity: 2 },
       { key: 'gift_flower', name: '鲜花', icon: '💐', quantity: 10 }
     ]
   },
@@ -45,9 +45,9 @@ const GIFTS = [
     minAmount: 280, 
     maxAmount: 840, 
     items: [
-      { key: 'retro_card', name: '补签卡', icon: '📅', quantity: 1 },
-      { key: 'throw_card', name: '扔瓶卡', icon: '📤', quantity: 1 },
-      { key: 'pick_card', name: '捞瓶卡', icon: '📥', quantity: 1 },
+      { key: 'retro_card', name: '补签卡', icon: '📅', quantity: 3 },
+      { key: 'throw_card', name: '扔瓶卡', icon: '📤', quantity: 3 },
+      { key: 'pick_card', name: '捞瓶卡', icon: '📥', quantity: 3 },
       { key: 'gift_cake', name: '蛋糕', icon: '🎂', quantity: 5 }
     ]
   }
