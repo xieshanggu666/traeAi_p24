@@ -3,6 +3,19 @@ const router = express.Router();
 const pool = require('../config/db');
 const { generateUUID, generateResponse } = require('../utils/helper');
 
+let hasTypeColumn = null;
+
+async function checkTypeColumn() {
+  if (hasTypeColumn !== null) return hasTypeColumn;
+  try {
+    await pool.execute('SELECT type FROM messages LIMIT 0');
+    hasTypeColumn = true;
+  } catch {
+    hasTypeColumn = false;
+  }
+  return hasTypeColumn;
+}
+
 router.get('/:bottleId', async (req, res) => {
   try {
     const { bottleId } = req.params;
@@ -22,8 +35,11 @@ router.get('/:bottleId', async (req, res) => {
       pickerDeletedAt = bottleRows[0].picker_deleted_at;
     }
 
+    const typeCol = await checkTypeColumn();
+    const selectType = typeCol ? ', m.type' : '';
+
     let query = 
-      'SELECT m.id, m.bottle_id, m.sender_id, m.receiver_id, m.content, m.type, m.is_read, m.created_at, ' +
+      'SELECT m.id, m.bottle_id, m.sender_id, m.receiver_id, m.content' + selectType + ', m.is_read, m.created_at, ' +
       'u.nickname as sender_nickname, u.avatar as sender_avatar ' +
       'FROM messages m ' +
       'LEFT JOIN users u ON m.sender_id = u.id ' +
@@ -64,14 +80,23 @@ router.post('/send', async (req, res) => {
 
     const messageId = generateUUID();
     const type = req.body.type || 'text';
+    const typeCol = await checkTypeColumn();
 
-    await pool.execute(
-      'INSERT INTO messages (id, bottle_id, sender_id, receiver_id, content, type) VALUES (?, ?, ?, ?, ?, ?)',
-      [messageId, bottleId, senderId, receiverId, content.trim(), type]
-    );
+    if (typeCol) {
+      await pool.execute(
+        'INSERT INTO messages (id, bottle_id, sender_id, receiver_id, content, type) VALUES (?, ?, ?, ?, ?, ?)',
+        [messageId, bottleId, senderId, receiverId, content.trim(), type]
+      );
+    } else {
+      await pool.execute(
+        'INSERT INTO messages (id, bottle_id, sender_id, receiver_id, content) VALUES (?, ?, ?, ?, ?)',
+        [messageId, bottleId, senderId, receiverId, content.trim()]
+      );
+    }
 
+    const selectType = typeCol ? ', m.type' : '';
     const [message] = await pool.execute(
-      'SELECT m.id, m.bottle_id, m.sender_id, m.receiver_id, m.content, m.type, m.is_read, m.created_at, ' +
+      'SELECT m.id, m.bottle_id, m.sender_id, m.receiver_id, m.content' + selectType + ', m.is_read, m.created_at, ' +
       'u.nickname as sender_nickname, u.avatar as sender_avatar ' +
       'FROM messages m ' +
       'LEFT JOIN users u ON m.sender_id = u.id ' +

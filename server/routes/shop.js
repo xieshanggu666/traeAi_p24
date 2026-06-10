@@ -3,17 +3,20 @@ const router = express.Router();
 const pool = require('../config/db');
 const { generateUUID, generateResponse } = require('../utils/helper');
 
+let hasMsgTypeColumn = null;
+
+async function checkMsgTypeColumn() {
+  if (hasMsgTypeColumn !== null) return hasMsgTypeColumn;
+  try {
+    await pool.execute('SELECT type FROM messages LIMIT 0');
+    hasMsgTypeColumn = true;
+  } catch {
+    hasMsgTypeColumn = false;
+  }
+  return hasMsgTypeColumn;
+}
+
 const PRODUCTS = [
-  {
-    key: 'function_prop',
-    name: '商品功能道具',
-    description: '神秘的功能道具，可用于特殊用途',
-    price: 0,
-    dailyLimit: 0,
-    icon: '🎁',
-    category: 'function',
-    hidden: true
-  },
   {
     key: 'retro_card',
     name: '补签卡',
@@ -151,13 +154,11 @@ router.get('/products', async (req, res) => {
       purchaseMap[p.item_key] = p.count;
     });
 
-    const products = PRODUCTS
-      .filter(p => !p.hidden)
-      .map(p => ({
-        ...p,
-        todayPurchased: purchaseMap[p.item_key] || 0,
-        canBuy: p.dailyLimit === 0 || (purchaseMap[p.item_key] || 0) < p.dailyLimit
-      }));
+    const products = PRODUCTS.map(p => ({
+      ...p,
+      todayPurchased: purchaseMap[p.item_key] || 0,
+      canBuy: p.dailyLimit === 0 || (purchaseMap[p.item_key] || 0) < p.dailyLimit
+    }));
 
     const categories = [
       { key: 'function', name: '功能道具', icon: '🎯' },
@@ -670,13 +671,23 @@ router.post('/send-chat-gift', async (req, res) => {
       charmValue: gift.charmValue
     });
 
-    await connection.execute(
-      'INSERT INTO messages (id, bottle_id, sender_id, receiver_id, content, type) VALUES (?, ?, ?, ?, ?, ?)',
-      [messageId, bottleId, userId, receiverId, messageContent, 'gift']
-    );
+    const typeCol = await checkMsgTypeColumn();
 
+    if (typeCol) {
+      await connection.execute(
+        'INSERT INTO messages (id, bottle_id, sender_id, receiver_id, content, type) VALUES (?, ?, ?, ?, ?, ?)',
+        [messageId, bottleId, userId, receiverId, messageContent, 'gift']
+      );
+    } else {
+      await connection.execute(
+        'INSERT INTO messages (id, bottle_id, sender_id, receiver_id, content) VALUES (?, ?, ?, ?, ?)',
+        [messageId, bottleId, userId, receiverId, messageContent]
+      );
+    }
+
+    const selectType = typeCol ? ', m.type' : '';
     const [message] = await connection.execute(
-      'SELECT m.id, m.bottle_id, m.sender_id, m.receiver_id, m.content, m.type, m.is_read, m.created_at, ' +
+      'SELECT m.id, m.bottle_id, m.sender_id, m.receiver_id, m.content' + selectType + ', m.is_read, m.created_at, ' +
       'u.nickname as sender_nickname, u.avatar as sender_avatar ' +
       'FROM messages m ' +
       'LEFT JOIN users u ON m.sender_id = u.id ' +

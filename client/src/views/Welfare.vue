@@ -54,7 +54,7 @@
             <div class="gift-icon">{{ gift.claimed ? '🎁' : (gift.canClaim ? '🎊' : '🔒') }}</div>
             <div class="gift-days">{{ gift.days }}天礼包</div>
             <div class="gift-items-preview">
-              <span v-for="(item, idx) in gift.items.slice(0, 2)" :key="idx" class="gift-preview-icon">{{ item.icon }}</span>
+              <span v-for="(item, idx) in gift.items" :key="idx" class="gift-preview-icon">{{ item.icon }}</span>
             </div>
           </div>
         </div>
@@ -285,7 +285,9 @@ const giftRules = [
     min: 70, 
     max: 210, 
     items: [
-      { key: 'function_prop', name: '商品功能道具', icon: '🎁', quantity: 1 },
+      { key: 'retro_card', name: '补签卡', icon: '📅', quantity: 1 },
+      { key: 'throw_card', name: '扔瓶卡', icon: '📤', quantity: 1 },
+      { key: 'pick_card', name: '捞瓶卡', icon: '📥', quantity: 1 },
       { key: 'gift_flower', name: '鲜花', icon: '💐', quantity: 5 }
     ]
   },
@@ -294,7 +296,9 @@ const giftRules = [
     min: 140, 
     max: 420, 
     items: [
-      { key: 'function_prop', name: '商品功能道具', icon: '🎁', quantity: 2 },
+      { key: 'retro_card', name: '补签卡', icon: '📅', quantity: 1 },
+      { key: 'throw_card', name: '扔瓶卡', icon: '📤', quantity: 1 },
+      { key: 'pick_card', name: '捞瓶卡', icon: '📥', quantity: 1 },
       { key: 'gift_flower', name: '鲜花', icon: '💐', quantity: 10 }
     ]
   },
@@ -303,7 +307,9 @@ const giftRules = [
     min: 280, 
     max: 840, 
     items: [
-      { key: 'function_prop', name: '商品功能道具', icon: '🎁', quantity: 3 },
+      { key: 'retro_card', name: '补签卡', icon: '📅', quantity: 1 },
+      { key: 'throw_card', name: '扔瓶卡', icon: '📤', quantity: 1 },
+      { key: 'pick_card', name: '捞瓶卡', icon: '📥', quantity: 1 },
       { key: 'gift_cake', name: '蛋糕', icon: '🎂', quantity: 5 }
     ]
   }

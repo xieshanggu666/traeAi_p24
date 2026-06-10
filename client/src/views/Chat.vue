@@ -344,7 +344,11 @@ async function handleSendGift() {
       confirmButtonText: '赠送',
       cancelButtonText: '取消'
     });
+  } catch {
+    return;
+  }
 
+  try {
     isSendingGift.value = true;
     const result = await sendChatGift(bottleId, otherUserId.value, selectedGift.value.key);
     
@@ -357,9 +361,7 @@ async function handleSendGift() {
     scrollToBottom();
     await fetchGiftItems();
   } catch (error) {
-    if (error.isBusinessError || error.httpMessage || error.businessMessage) {
-      showToast(error.businessMessage || error.httpMessage || '赠送失败');
-    }
+    showToast(error.businessMessage || error.httpMessage || '赠送礼物失败');
   } finally {
     isSendingGift.value = false;
   }
