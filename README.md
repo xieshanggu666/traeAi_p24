@@ -184,6 +184,58 @@ DB_NAME=drift_bottle         # 数据库名
 5. **海洋主题**：精美的海洋风格UI设计
 6. **动画效果**：丰富的交互动画提升体验
 
-## 📄 License
+## � 常见问题修复
+
+### 问题：操作功能时提示框空白，刷新后正常
+
+#### 问题描述
+每次操作功能（如买礼物、签到、完成任务等）时，弹出的提示框（Toast/Dialog）为空白。但是刷新页面后，再次操作就能正常弹出内容。
+
+#### 错误原因
+**根本原因：Vant 函数式组件未通过 `app.use()` 正确注册到 Vue 应用实例。**
+
+详细分析：
+1. 项目使用 `unplugin-vue-components` + `@vant/auto-import-resolver` 实现 Vant 组件的自动按需导入
+2. 自动导入仅对模板中使用的组件（如 `<van-button>`、`<van-tabbar>`）有效
+3. 对于函数式调用的组件（`showToast`、`showDialog` 等），虽然代码中导入了函数，但对应的组件没有被正确注册到 Vue 应用实例
+4. 首次调用时，Vant 内部动态创建的组件实例无法正确挂载和渲染，导致提示框显示空白
+5. 刷新页面后，由于模块缓存或内部状态初始化的原因，组件能够正常渲染
+
+#### 修复方案
+
+**方案一：全局注册函数式组件（已采用）**
+
+在 `client/src/main.js` 中显式导入并注册 Toast 和 Dialog 组件：
+
+```javascript
+import { createApp } from 'vue';
+import App from './App.vue';
+import router from './router';
+import { Toast, Dialog } from 'vant';  // 导入函数式组件
+import 'vant/lib/index.css';
+import './assets/global.css';
+
+const app = createApp(App);
+app.use(router);
+app.use(Toast);    // 全局注册 Toast
+app.use(Dialog);   // 全局注册 Dialog
+app.mount('#app');
+```
+
+**方案二：优化自动导入配置**
+
+在 `client/vite.config.js` 中设置 `importStyle: false`，避免样式重复导入（因为已全局导入完整样式）：
+
+```javascript
+Components({
+  resolvers: [VantResolver({ importStyle: false })]
+})
+```
+
+#### 修改文件
+- `client/src/main.js` - 全局注册 Toast 和 Dialog 组件
+- `client/vite.config.js` - 优化 VantResolver 配置
+
+## �📄 License
 
 MIT License
