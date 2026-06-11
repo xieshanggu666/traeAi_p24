@@ -899,7 +899,9 @@ router.get('/my', async (req, res) => {
           unread_count: unreadMap[bottle.id] || 0
         };
 
-        if (enhancedBottle.sender_id === userId || enhancedBottle.type === 'sent') {
+        const isSender = String(enhancedBottle.sender_id) === String(userId) || enhancedBottle.type === 'sent';
+
+        if (isSender) {
           const createdAt = new Date(enhancedBottle.created_at);
           const now = new Date();
           const timeDiffMinutes = (now - createdAt) / (1000 * 60);
@@ -913,7 +915,7 @@ router.get('/my', async (req, res) => {
           } else if (enhancedBottle.status !== 'floating') {
             canRecall = false;
             canRecallReason = '瓶子已被捞取';
-          } else if (enhancedBottle.pick_count > 0) {
+          } else if ((enhancedBottle.pick_count || 0) > 0) {
             canRecall = false;
             canRecallReason = '已有用户捞取';
           }
@@ -922,7 +924,7 @@ router.get('/my', async (req, res) => {
           enhancedBottle.canRecallReason = canRecallReason;
           enhancedBottle.recallTimeRemaining = Math.max(0, RECALL_TIME_LIMIT_MINUTES - timeDiffMinutes);
           enhancedBottle.recallCoinCost = RECALL_COIN_COST;
-          enhancedBottle.canPin = enhancedBottle.status === 'floating' && !enhancedBottle.is_pinned && enhancedBottle.pick_count < MAX_PICK_COUNT;
+          enhancedBottle.canPin = enhancedBottle.status === 'floating' && !enhancedBottle.is_pinned && (enhancedBottle.pick_count || 0) < MAX_PICK_COUNT;
           enhancedBottle.pinCoinCost = PIN_COIN_COST;
         } else {
           enhancedBottle.canRecall = false;

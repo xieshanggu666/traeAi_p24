@@ -4,6 +4,7 @@
       <div class="header-bg"></div>
       <div class="header-content">
         <h2 class="page-title">💬 消息</h2>
+        <van-icon name="info-o" size="20" class="rules-btn" @click="showRules = true" />
       </div>
     </div>
 
@@ -143,6 +144,37 @@
       @confirm="doConfirmAction"
     />
 
+    <van-dialog
+      v-model:show="showRules"
+      title="📖 置顶与撤回规则"
+      :showConfirmButton="true"
+      :showCancelButton="false"
+      confirmButtonText="我知道了"
+    >
+      <div class="rules-content">
+        <div class="rules-section">
+          <div class="rules-title">⭐ 置顶规则</div>
+          <ul class="rules-list">
+            <li>置顶需要消耗 <b class="text-warning">50</b> 漂流币</li>
+            <li>置顶后瓶子被捞取概率提升至 <b class="text-warning">100%</b></li>
+            <li>多个置顶瓶子时，概率在所有置顶瓶子之间平均分配</li>
+            <li>仅 <b>漂流中</b> 的瓶子可以置顶</li>
+            <li>已被捞满（5人）的瓶子无法置顶</li>
+          </ul>
+        </div>
+        <div class="rules-section">
+          <div class="rules-title">↩️ 撤回规则</div>
+          <ul class="rules-list">
+            <li>撤回需要消耗 <b class="text-danger">10</b> 漂流币</li>
+            <li>必须在发布 <b class="text-danger">5 分钟内</b> 才可以撤回</li>
+            <li>瓶子必须处于 <b>漂流中</b> 且 <b>未被任何用户捞取</b></li>
+            <li>撤回成功后会 <b>返还 1 次扔瓶子次数</b></li>
+            <li>撤回后瓶子将被永久删除，无法恢复</li>
+          </ul>
+        </div>
+      </div>
+    </van-dialog>
+
     <van-tabbar v-model="activeBottom" active-color="#1989fa">
       <van-tabbar-item name="home" icon="home-o" @click="goToHome">首页</van-tabbar-item>
       <van-tabbar-item name="messages" icon="chat-o" :badge="totalUnread > 0 ? totalUnread : ''">消息</van-tabbar-item>
@@ -179,6 +211,7 @@ const refreshing = ref(false);
 const totalUnread = ref(0);
 const fetchError = ref(null);
 const showConfirm = ref(false);
+const showRules = ref(false);
 const confirmTitle = ref('');
 const confirmMessage = ref('');
 let confirmCallback = null;
@@ -458,6 +491,21 @@ function goToMy() { router.push('/my'); }
   z-index: 1;
   padding: 16px 20px 20px;
   color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.rules-btn {
+  color: #fff;
+  opacity: 0.85;
+  padding: 4px;
+  cursor: pointer;
+}
+
+.rules-btn:active {
+  opacity: 1;
+  transform: scale(0.95);
 }
 
 .page-title {
@@ -687,5 +735,57 @@ function goToMy() { router.push('/my'); }
 
 .swipe-delete {
   height: 100% !important;
+}
+
+.rules-content {
+  padding: 8px 20px 0;
+  text-align: left;
+}
+
+.rules-section {
+  margin-bottom: 16px;
+}
+
+.rules-section:last-child {
+  margin-bottom: 0;
+}
+
+.rules-title {
+  font-size: 15px;
+  font-weight: bold;
+  color: #333;
+  margin-bottom: 8px;
+  padding-left: 8px;
+  border-left: 3px solid #667eea;
+}
+
+.rules-list {
+  margin: 0;
+  padding: 0 0 0 8px;
+  list-style: none;
+}
+
+.rules-list li {
+  font-size: 13px;
+  color: #666;
+  line-height: 1.8;
+  position: relative;
+  padding-left: 16px;
+}
+
+.rules-list li::before {
+  content: '•';
+  position: absolute;
+  left: 0;
+  color: #667eea;
+  font-weight: bold;
+}
+
+.text-warning {
+  color: #ff9800;
+}
+
+.text-danger {
+  color: #ff4d4f;
 }
 </style>
