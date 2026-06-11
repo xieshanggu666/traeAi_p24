@@ -31,8 +31,12 @@ export const throwBottle = (content) => {
   return request.post('/bottle/throw', { content });
 };
 
-export const pickBottle = () => {
-  return request.post('/bottle/pick');
+export const pickBottle = (filters) => {
+  return request.post('/bottle/pick', { filters });
+};
+
+export const getFilteredBottleCount = (filters) => {
+  return request.post('/bottle/pick/count', filters);
 };
 
 export const returnBottle = (bottleId) => {

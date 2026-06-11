@@ -94,9 +94,75 @@ router.post('/throw', async (req, res) => {
   }
 });
 
+function buildFilterQuery(filters, pickerId, isCount = false) {
+  const conditions = ['b.status = ?', 'b.sender_id != ?'];
+  const params = ['floating', pickerId];
+
+  if (filters) {
+    if (filters.gender && filters.gender !== 'all') {
+      conditions.push('u.gender = ?');
+      params.push(filters.gender);
+    }
+
+    if (filters.minAge !== undefined && filters.minAge !== null) {
+      const minBirthday = new Date();
+      minBirthday.setFullYear(minBirthday.getFullYear() - filters.minAge);
+      conditions.push('u.birthday <= ?');
+      params.push(minBirthday.toISOString().split('T')[0]);
+    }
+
+    if (filters.maxAge !== undefined && filters.maxAge !== null) {
+      const maxBirthday = new Date();
+      maxBirthday.setFullYear(maxBirthday.getFullYear() - filters.maxAge - 1);
+      maxBirthday.setDate(maxBirthday.getDate() + 1);
+      conditions.push('u.birthday >= ?');
+      params.push(maxBirthday.toISOString().split('T')[0]);
+    }
+
+    if (filters.timeRange && filters.timeRange !== 'all') {
+      const hoursMap = {
+        '24h': 24,
+        '3d': 72,
+        '7d': 168
+      };
+      if (hoursMap[filters.timeRange]) {
+        conditions.push(`b.created_at >= DATE_SUB(NOW(), INTERVAL ${hoursMap[filters.timeRange]} HOUR)`);
+      }
+    }
+  }
+
+  const whereClause = conditions.join(' AND ');
+  const selectFields = isCount
+    ? 'COUNT(*) as total'
+    : 'b.id, b.sender_id, b.content, b.created_at, u.nickname as sender_nickname, u.avatar as sender_avatar, u.gender as sender_gender, u.birthday as sender_birthday';
+
+  return {
+    query: `SELECT ${selectFields} FROM bottles b LEFT JOIN users u ON b.sender_id = u.id WHERE ${whereClause}`,
+    params
+  };
+}
+
+router.post('/pick/count', async (req, res) => {
+  try {
+    const pickerId = req.user.userId;
+    const filters = req.body || {};
+
+    const { query, params } = buildFilterQuery(filters, pickerId, true);
+    const [result] = await pool.execute(query, params);
+
+    res.json(generateResponse(true, {
+      count: result[0].total || 0
+    }, '获取筛选数量成功'));
+  } catch (error) {
+    console.error('获取筛选数量失败:', error);
+    res.status(500).json(generateResponse(false, null, '获取筛选数量失败'));
+  }
+});
+
 router.post('/pick', async (req, res) => {
   try {
     const pickerId = req.user.userId;
+    const filters = req.body.filters || {};
 
     const today = getLocalDateStr();
     await ensureDailyStat(pickerId, today);
@@ -106,17 +172,13 @@ router.post('/pick', async (req, res) => {
       return res.status(429).json(generateResponse(false, null, `今日捞瓶子次数已达上限(${DAILY_LIMIT}次)，明天再来吧`));
     }
 
-    const [floatingBottles] = await pool.execute(
-      'SELECT b.id, b.sender_id, b.content, b.created_at, u.nickname as sender_nickname, u.avatar as sender_avatar ' +
-      'FROM bottles b ' +
-      'LEFT JOIN users u ON b.sender_id = u.id ' +
-      'WHERE b.status = ? AND b.sender_id != ? ' +
-      'ORDER BY RAND() LIMIT 1',
-      ['floating', pickerId]
-    );
+    const { query, params } = buildFilterQuery(filters, pickerId, false);
+    const fullQuery = `${query} ORDER BY RAND() LIMIT 1`;
+
+    const [floatingBottles] = await pool.execute(fullQuery, params);
 
     if (floatingBottles.length === 0) {
-      return res.json(generateResponse(false, null, '海里暂时没有漂流瓶'));
+      return res.json(generateResponse(false, null, '海里暂时没有符合条件的漂流瓶'));
     }
 
     const bottle = floatingBottles[0];
@@ -137,6 +199,8 @@ router.post('/pick', async (req, res) => {
       senderId: bottle.sender_id,
       senderNickname: bottle.sender_nickname,
       senderAvatar: bottle.sender_avatar,
+      senderGender: bottle.sender_gender,
+      senderBirthday: bottle.sender_birthday,
       createdAt: bottle.created_at,
       pickRemaining: Math.max(0, DAILY_LIMIT - pickCount - 1)
     }, '捞到瓶子了'));

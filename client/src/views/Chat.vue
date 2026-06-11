@@ -82,9 +82,39 @@
       </div>
     </div>
 
+    <div class="quick-reply-chat-panel" v-if="showQuickReply">
+      <div class="quick-reply-chat-header">
+        <div class="quick-reply-chat-tabs">
+          <div 
+            v-for="(category, index) in quickReplyCategories" 
+            :key="index"
+            class="quick-tab-chat"
+            :class="{ active: activeQuickCategory === index }"
+            @click="activeQuickCategory = index"
+          >
+            {{ category.name }}
+          </div>
+        </div>
+        <van-icon name="cross" size="18" @click="showQuickReply = false" class="close-quick-btn" />
+      </div>
+      <div class="quick-reply-chat-list">
+        <div 
+          v-for="(msg, msgIndex) in quickReplyCategories[activeQuickCategory].messages" 
+          :key="msgIndex"
+          class="quick-reply-chat-item"
+          @click="useQuickReply(msg)"
+        >
+          {{ msg }}
+        </div>
+      </div>
+    </div>
+
     <div class="input-area">
       <div class="gift-btn" @click="showGiftPanel = true">
         <van-icon name="gift-o" size="24" color="#667eea" />
+      </div>
+      <div class="quick-reply-chat-btn" @click="showQuickReply = !showQuickReply" :class="{ active: showQuickReply }">
+        <van-icon name="chat-o" size="24" color="#667eea" />
       </div>
       <textarea
         v-model="messageContent"
@@ -93,6 +123,7 @@
         rows="1"
         @keydown.enter.exact.prevent="sendMessage"
         @input="adjustTextareaHeight"
+        @focus="showQuickReply = false"
         ref="textareaRef"
       ></textarea>
       <van-button
@@ -186,6 +217,55 @@ const giftItems = ref([]);
 const selectedGift = ref(null);
 const giftLoading = ref(false);
 const isSendingGift = ref(false);
+const showQuickReply = ref(false);
+const activeQuickCategory = ref(0);
+
+const quickReplyCategories = [
+  {
+    name: '打招呼',
+    messages: [
+      '你好呀~',
+      '嗨，很高兴认识你！',
+      '哈喽，在吗？',
+      '你好，看到你的消息了',
+      'Hi~ 缘分让我们相遇',
+      '你好呀，想和你聊聊'
+    ]
+  },
+  {
+    name: '心情',
+    messages: [
+      '我今天心情很好！',
+      '今天有点累，想找人聊聊',
+      '最近压力有点大...',
+      '分享一件开心的小事给你',
+      '今天遇到了很有趣的事',
+      '突然想找个人说说话'
+    ]
+  },
+  {
+    name: '兴趣',
+    messages: [
+      '你平时喜欢做什么？',
+      '有什么好看的剧推荐吗？',
+      '最近在听什么歌？',
+      '你喜欢旅游吗？',
+      '平时喜欢看什么类型的电影？',
+      '有什么爱好吗？'
+    ]
+  },
+  {
+    name: '晚安',
+    messages: [
+      '晚安，好梦~',
+      '早点休息吧，晚安',
+      '晚安，明天又是美好的一天',
+      '愿你有个好梦，晚安',
+      '很晚了，早点睡哦，晚安',
+      '晚安，陌生人'
+    ]
+  }
+];
 
 let timer = null;
 
@@ -387,6 +467,14 @@ async function handleSendGift() {
 function goToShop() {
   showGiftPanel.value = false;
   router.push('/shop');
+}
+
+function useQuickReply(msg) {
+  messageContent.value = msg;
+  showQuickReply.value = false;
+  nextTick(() => {
+    adjustTextareaHeight();
+  });
 }
 </script>
 
@@ -773,5 +861,97 @@ function goToShop() {
   padding-top: 16px;
   border-top: 1px solid #f0f0f0;
   margin-top: 8px;
+}
+
+.quick-reply-chat-panel {
+  background: #fff;
+  border-top: 1px solid #eee;
+  padding: 12px 16px 0;
+}
+
+.quick-reply-chat-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.quick-reply-chat-tabs {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  flex: 1;
+}
+
+.quick-tab-chat {
+  flex-shrink: 0;
+  padding: 6px 12px;
+  font-size: 12px;
+  color: #666;
+  background: #f5f5f5;
+  border-radius: 14px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.quick-tab-chat.active {
+  color: #fff;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+
+.close-quick-btn {
+  color: #999;
+  cursor: pointer;
+  flex-shrink: 0;
+  margin-left: 10px;
+}
+
+.quick-reply-chat-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  max-height: 160px;
+  overflow-y: auto;
+  padding-bottom: 12px;
+}
+
+.quick-reply-chat-item {
+  flex: 0 0 calc(50% - 4px);
+  padding: 10px 12px;
+  background: #f7f7f7;
+  border: 1px solid #eee;
+  border-radius: 8px;
+  font-size: 13px;
+  color: #333;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-align: center;
+}
+
+.quick-reply-chat-item:active {
+  background: #667eea;
+  color: #fff;
+  transform: scale(0.98);
+}
+
+.quick-reply-chat-btn {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: #f5f5f5;
+  cursor: pointer;
+  transition: background 0.2s;
+  flex-shrink: 0;
+}
+
+.quick-reply-chat-btn:active {
+  background: #e8e8e8;
+}
+
+.quick-reply-chat-btn.active {
+  background: #667eea20;
 }
 </style>
