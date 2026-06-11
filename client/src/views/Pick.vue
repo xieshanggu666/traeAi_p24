@@ -559,6 +559,7 @@ async function returnBottle() {
     showToast(result._message || '操作成功');
     bottle.value = null;
     showReply.value = false;
+    updateFilterCount();
   } catch (error) {
     showToast(error.businessMessage || error.httpMessage || '出现异常');
   } finally {
