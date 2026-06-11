@@ -278,4 +278,303 @@ router.post('/logout', authenticateToken, (req, res) => {
   res.json(generateResponse(true, null, '退出登录成功'));
 });
 
+router.get('/search', authenticateToken, async (req, res) => {
+  try {
+    const { keyword } = req.query;
+    const userId = req.user.userId;
+
+    if (!keyword || keyword.trim().length === 0) {
+      return res.status(400).json(generateResponse(false, null, '搜索关键词不能为空'));
+    }
+
+    const trimmedKeyword = keyword.trim();
+    const [users] = await pool.execute(
+      `SELECT id, username, nickname, avatar, gender, birthday, bio, created_at 
+       FROM users 
+       WHERE (username LIKE ? OR nickname LIKE ? OR id = ?) AND id != ?
+       LIMIT 20`,
+      [`%${trimmedKeyword}%`, `%${trimmedKeyword}%`, trimmedKeyword, userId]
+    );
+
+    res.json(generateResponse(true, users, '搜索成功'));
+  } catch (error) {
+    console.error('搜索用户失败:', error);
+    res.status(500).json(generateResponse(false, null, '搜索用户失败'));
+  }
+});
+
+router.get('/profile/:userId', authenticateToken, async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const currentUserId = req.user.userId;
+
+    const [users] = await pool.execute(
+      `SELECT id, username, nickname, avatar, gender, birthday, bio, created_at 
+       FROM users WHERE id = ?`,
+      [userId]
+    );
+
+    if (users.length === 0) {
+      return res.status(404).json(generateResponse(false, null, '用户不存在'));
+    }
+
+    const user = users[0];
+
+    const [friendRows] = await pool.execute(
+      'SELECT * FROM friends WHERE user_id = ? AND friend_id = ?',
+      [currentUserId, userId]
+    );
+    user.isFriend = friendRows.length > 0;
+
+    const [requestRows] = await pool.execute(
+      "SELECT * FROM friend_requests WHERE sender_id = ? AND receiver_id = ? AND status = 'pending'",
+      [currentUserId, userId]
+    );
+    user.hasPendingRequest = requestRows.length > 0;
+
+    const [receivedRequestRows] = await pool.execute(
+      "SELECT * FROM friend_requests WHERE sender_id = ? AND receiver_id = ? AND status = 'pending'",
+      [userId, currentUserId]
+    );
+    user.hasReceivedRequest = receivedRequestRows.length > 0;
+
+    res.json(generateResponse(true, user, '获取用户信息成功'));
+  } catch (error) {
+    console.error('获取用户信息失败:', error);
+    res.status(500).json(generateResponse(false, null, '获取用户信息失败'));
+  }
+});
+
+router.post('/friend/request', authenticateToken, async (req, res) => {
+  try {
+    const { receiverId, message } = req.body;
+    const senderId = req.user.userId;
+
+    if (!receiverId) {
+      return res.status(400).json(generateResponse(false, null, '接收者ID不能为空'));
+    }
+
+    if (receiverId === senderId) {
+      return res.status(400).json(generateResponse(false, null, '不能添加自己为好友'));
+    }
+
+    const [receivers] = await pool.execute(
+      'SELECT id FROM users WHERE id = ?',
+      [receiverId]
+    );
+
+    if (receivers.length === 0) {
+      return res.status(404).json(generateResponse(false, null, '用户不存在'));
+    }
+
+    const [existingFriends] = await pool.execute(
+      'SELECT * FROM friends WHERE user_id = ? AND friend_id = ?',
+      [senderId, receiverId]
+    );
+
+    if (existingFriends.length > 0) {
+      return res.status(400).json(generateResponse(false, null, '对方已经是你的好友了'));
+    }
+
+    const [existingRequests] = await pool.execute(
+      "SELECT * FROM friend_requests WHERE sender_id = ? AND receiver_id = ? AND status = 'pending'",
+      [senderId, receiverId]
+    );
+
+    if (existingRequests.length > 0) {
+      return res.status(400).json(generateResponse(false, null, '已发送过好友申请，等待对方处理'));
+    }
+
+    const [reverseRequests] = await pool.execute(
+      "SELECT * FROM friend_requests WHERE sender_id = ? AND receiver_id = ? AND status = 'pending'",
+      [receiverId, senderId]
+    );
+
+    if (reverseRequests.length > 0) {
+      const requestId = reverseRequests[0].id;
+      await acceptFriendRequestHelper(senderId, receiverId, requestId);
+      return res.json(generateResponse(true, null, '对方也申请添加你为好友，已自动成为好友'));
+    }
+
+    const requestId = generateUUID();
+    await pool.execute(
+      'INSERT INTO friend_requests (id, sender_id, receiver_id, message) VALUES (?, ?, ?, ?)',
+      [requestId, senderId, receiverId, message || null]
+    );
+
+    res.json(generateResponse(true, null, '好友申请已发送'));
+  } catch (error) {
+    console.error('发送好友申请失败:', error);
+    res.status(500).json(generateResponse(false, null, '发送好友申请失败'));
+  }
+});
+
+async function acceptFriendRequestHelper(userId, friendId, requestId) {
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+
+    await conn.execute(
+      "UPDATE friend_requests SET status = 'accepted' WHERE id = ?",
+      [requestId]
+    );
+
+    await conn.execute(
+      'INSERT IGNORE INTO friends (id, user_id, friend_id) VALUES (?, ?, ?)',
+      [generateUUID(), userId, friendId]
+    );
+
+    await conn.execute(
+      'INSERT IGNORE INTO friends (id, user_id, friend_id) VALUES (?, ?, ?)',
+      [generateUUID(), friendId, userId]
+    );
+
+    await conn.commit();
+  } catch (error) {
+    await conn.rollback();
+    throw error;
+  } finally {
+    conn.release();
+  }
+}
+
+router.post('/friend/accept/:requestId', authenticateToken, async (req, res) => {
+  try {
+    const { requestId } = req.params;
+    const userId = req.user.userId;
+
+    const [requests] = await pool.execute(
+      "SELECT * FROM friend_requests WHERE id = ? AND receiver_id = ? AND status = 'pending'",
+      [requestId, userId]
+    );
+
+    if (requests.length === 0) {
+      return res.status(404).json(generateResponse(false, null, '好友申请不存在或已处理'));
+    }
+
+    const request = requests[0];
+    await acceptFriendRequestHelper(userId, request.sender_id, requestId);
+
+    res.json(generateResponse(true, null, '已接受好友申请'));
+  } catch (error) {
+    console.error('接受好友申请失败:', error);
+    res.status(500).json(generateResponse(false, null, '接受好友申请失败'));
+  }
+});
+
+router.post('/friend/reject/:requestId', authenticateToken, async (req, res) => {
+  try {
+    const { requestId } = req.params;
+    const userId = req.user.userId;
+
+    const [requests] = await pool.execute(
+      "SELECT * FROM friend_requests WHERE id = ? AND receiver_id = ? AND status = 'pending'",
+      [requestId, userId]
+    );
+
+    if (requests.length === 0) {
+      return res.status(404).json(generateResponse(false, null, '好友申请不存在或已处理'));
+    }
+
+    await pool.execute(
+      "UPDATE friend_requests SET status = 'rejected' WHERE id = ?",
+      [requestId]
+    );
+
+    res.json(generateResponse(true, null, '已拒绝好友申请'));
+  } catch (error) {
+    console.error('拒绝好友申请失败:', error);
+    res.status(500).json(generateResponse(false, null, '拒绝好友申请失败'));
+  }
+});
+
+router.get('/friends', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+
+    const [friends] = await pool.execute(
+      `SELECT f.id as friendship_id, f.created_at as added_at,
+              u.id, u.username, u.nickname, u.avatar, u.gender, u.birthday, u.bio, u.last_active_at
+       FROM friends f
+       INNER JOIN users u ON f.friend_id = u.id
+       WHERE f.user_id = ?
+       ORDER BY f.created_at DESC`,
+      [userId]
+    );
+
+    res.json(generateResponse(true, friends, '获取好友列表成功'));
+  } catch (error) {
+    console.error('获取好友列表失败:', error);
+    res.status(500).json(generateResponse(false, null, '获取好友列表失败'));
+  }
+});
+
+router.get('/friend/requests', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+
+    const [receivedRequests] = await pool.execute(
+      `SELECT fr.id, fr.sender_id, fr.message, fr.created_at, fr.status,
+              u.nickname, u.avatar, u.username
+       FROM friend_requests fr
+       INNER JOIN users u ON fr.sender_id = u.id
+       WHERE fr.receiver_id = ?
+       ORDER BY fr.created_at DESC`,
+      [userId]
+    );
+
+    const [sentRequests] = await pool.execute(
+      `SELECT fr.id, fr.receiver_id, fr.message, fr.created_at, fr.status,
+              u.nickname, u.avatar, u.username
+       FROM friend_requests fr
+       INNER JOIN users u ON fr.receiver_id = u.id
+       WHERE fr.sender_id = ?
+       ORDER BY fr.created_at DESC`,
+      [userId]
+    );
+
+    res.json(generateResponse(true, {
+      received: receivedRequests,
+      sent: sentRequests
+    }, '获取好友申请列表成功'));
+  } catch (error) {
+    console.error('获取好友申请列表失败:', error);
+    res.status(500).json(generateResponse(false, null, '获取好友申请列表失败'));
+  }
+});
+
+router.delete('/friend/:friendId', authenticateToken, async (req, res) => {
+  try {
+    const { friendId } = req.params;
+    const userId = req.user.userId;
+
+    const conn = await pool.getConnection();
+    try {
+      await conn.beginTransaction();
+
+      await conn.execute(
+        'DELETE FROM friends WHERE user_id = ? AND friend_id = ?',
+        [userId, friendId]
+      );
+
+      await conn.execute(
+        'DELETE FROM friends WHERE user_id = ? AND friend_id = ?',
+        [friendId, userId]
+      );
+
+      await conn.commit();
+    } catch (error) {
+      await conn.rollback();
+      throw error;
+    } finally {
+      conn.release();
+    }
+
+    res.json(generateResponse(true, null, '已删除好友'));
+  } catch (error) {
+    console.error('删除好友失败:', error);
+    res.status(500).json(generateResponse(false, null, '删除好友失败'));
+  }
+});
+
 module.exports = { router, authenticateToken };

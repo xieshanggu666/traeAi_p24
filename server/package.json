@@ -7,7 +7,8 @@
     "start": "node app.js",
     "dev": "nodemon app.js",
     "init-db": "node config/initDB.js",
-    "migrate-db": "node config/migrateDB.js"
+    "migrate-db": "node config/migrateDB.js",
+    "migrate-friends": "node config/migrateFriends.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

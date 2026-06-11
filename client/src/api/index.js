@@ -158,3 +158,35 @@ export const getIntimacy = (bottleId) => {
 export const getSendLimit = (bottleId) => {
   return request.get(`/message/send-limit/${bottleId}`);
 };
+
+export const searchFriendUsers = (keyword) => {
+  return request.get('/user/search', { params: { keyword } });
+};
+
+export const getUserProfile = (userId) => {
+  return request.get(`/user/profile/${userId}`);
+};
+
+export const sendFriendRequest = (receiverId, message) => {
+  return request.post('/user/friend/request', { receiverId, message });
+};
+
+export const acceptFriendRequest = (requestId) => {
+  return request.post(`/user/friend/accept/${requestId}`);
+};
+
+export const rejectFriendRequest = (requestId) => {
+  return request.post(`/user/friend/reject/${requestId}`);
+};
+
+export const getFriends = () => {
+  return request.get('/user/friends');
+};
+
+export const getFriendRequests = () => {
+  return request.get('/user/friend/requests');
+};
+
+export const deleteFriend = (friendId) => {
+  return request.delete(`/user/friend/${friendId}`);
+};

@@ -79,6 +79,12 @@ const routes = [
     name: 'Gifts',
     component: () => import('../views/Gifts.vue'),
     meta: { title: '我的礼物', requiresAuth: true }
+  },
+  {
+    path: '/friends',
+    name: 'Friends',
+    component: () => import('../views/Friends.vue'),
+    meta: { title: '好友', requiresAuth: true }
   }
 ];
 

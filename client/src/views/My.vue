@@ -40,6 +40,11 @@
           <span class="action-text">我的礼物</span>
           <van-icon name="arrow" size="14" color="#ccc" />
         </div>
+        <div class="action-item" @click="goToFriends">
+          <van-icon name="friends-o" size="20" color="#1989fa" />
+          <span class="action-text">我的好友</span>
+          <van-icon name="arrow" size="14" color="#ccc" />
+        </div>
       </div>
 
       <van-button
@@ -134,6 +139,7 @@ function goToMessages() { router.push('/messages'); }
 function goToShop() { router.push('/shop'); }
 function goToBackpack() { router.push('/backpack'); }
 function goToGifts() { router.push('/gifts'); }
+function goToFriends() { router.push('/friends'); }
 </script>
 
 <style scoped>

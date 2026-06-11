@@ -2,18 +2,23 @@
   <div class="chat-page">
     <div class="chat-header">
       <van-icon name="arrow-left" size="24" @click="goBack" />
-      <div class="chat-user-info">
+      <div class="chat-user-info" @click="showUserProfile(otherUserId)">
         <AvatarDisplay :avatar="otherUser?.avatar || '🐱'" :size="44" class="chat-avatar" />
         <div class="chat-user-detail">
           <div class="chat-nickname">{{ otherUser?.nickname || '匿名用户' }}</div>
           <div class="chat-status">匿名聊天中</div>
         </div>
       </div>
-      <div class="intimacy-display" v-if="intimacyValue > 0">
-        <span class="intimacy-heart">❤</span>
-        <span class="intimacy-value">{{ intimacyValue }}</span>
+      <div class="header-right">
+        <div class="add-friend-btn" v-if="intimacyValue >= 100 && !isFriend && !hasPendingRequest" @click="handleAddFriend">
+          <van-icon name="add-o" size="14" />
+          <span>加好友</span>
+        </div>
+        <div class="intimacy-display" v-if="intimacyValue > 0">
+          <span class="intimacy-heart">❤</span>
+          <span class="intimacy-value">{{ intimacyValue }}</span>
+        </div>
       </div>
-      <div style="width: 24px;" v-else></div>
     </div>
 
     <div class="bottle-info" v-if="bottleDetail">
@@ -28,7 +33,7 @@
         :key="msg.id"
         :class="{ 'is-mine': msg.sender_id === currentUserId }"
       >
-        <AvatarDisplay :avatar="otherUser?.avatar || msg.sender_avatar" :size="36" class="message-avatar" v-if="msg.sender_id !== currentUserId" />
+        <AvatarDisplay :avatar="otherUser?.avatar || msg.sender_avatar" :size="36" class="message-avatar clickable-avatar" v-if="msg.sender_id !== currentUserId" @click="showUserProfile(otherUserId)" />
         <template v-if="msg.sender_id !== currentUserId">
           <div class="message-bubble" :class="{ 'gift-bubble': isGiftMessage(msg) }">
             <template v-if="isGiftMessage(msg)">
@@ -68,7 +73,7 @@
             </template>
             <div class="message-time">{{ formatTime(msg.created_at) }}</div>
           </div>
-          <AvatarDisplay :avatar="currentUser?.avatar" :size="36" class="message-avatar mine" />
+          <AvatarDisplay :avatar="currentUser?.avatar" :size="36" class="message-avatar mine clickable-avatar" @click="showUserProfile(currentUserId)" />
         </template>
       </div>
 
@@ -196,6 +201,76 @@
         </div>
       </div>
     </van-popup>
+
+    <van-popup v-model:show="showProfilePopup" round position="bottom" :style="{ maxHeight: '80vh' }">
+      <div class="profile-panel" v-if="profileUser">
+        <div class="popup-header">
+          <div class="popup-title">👤 用户信息</div>
+          <van-icon name="cross" size="20" @click="showProfilePopup = false" />
+        </div>
+        <div class="profile-header">
+          <AvatarDisplay :avatar="profileUser.avatar" :size="72" class="profile-avatar" />
+          <div class="profile-info">
+            <div class="profile-nickname-row">
+              <span class="profile-nickname">{{ profileUser.nickname }}</span>
+              <span class="gender-icon" v-if="profileUser.gender === '男'">♂</span>
+              <span class="gender-icon gender-female" v-else-if="profileUser.gender === '女'">♀</span>
+            </div>
+            <div class="profile-username" v-if="profileUser.username">@{{ profileUser.username }}</div>
+            <div class="profile-user-id">ID: {{ profileUser.id }}</div>
+          </div>
+        </div>
+        <div class="profile-section">
+          <div class="profile-section-title">个人介绍</div>
+          <div class="profile-bio" v-if="profileUser.bio">{{ profileUser.bio }}</div>
+          <div class="profile-no-bio" v-else>这个人很懒，什么都没写</div>
+        </div>
+        <div class="profile-section" v-if="profileUser.created_at">
+          <div class="profile-section-title">注册时间</div>
+          <div class="profile-value">{{ formatProfileDate(profileUser.created_at) }}</div>
+        </div>
+        <div class="profile-footer" v-if="!isProfileSelf && otherUserId === profileUser.id">
+          <van-button
+            type="primary"
+            block
+            round
+            :disabled="isFriend || hasPendingRequest || intimacyValue < 100"
+            :loading="addingFriend"
+            @click="handleAddFriend"
+          >
+            <template v-if="isFriend">已是好友</template>
+            <template v-else-if="hasPendingRequest">已发送申请</template>
+            <template v-else-if="intimacyValue < 100">亲密度需≥100 ({{ intimacyValue }}/100)</template>
+            <template v-else>添加好友</template>
+          </van-button>
+        </div>
+        <div class="profile-footer" v-else-if="isProfileSelf">
+          <div class="self-hint">这是你自己</div>
+        </div>
+      </div>
+    </van-popup>
+
+    <van-dialog
+      v-model:show="showRequestDialog"
+      title="添加好友"
+      show-cancel-button
+      confirm-button-text="发送"
+      cancel-button-text="取消"
+      @confirm="confirmSendRequest"
+    >
+      <div style="padding: 12px 0;">
+        <div class="dialog-tip">给 <strong>{{ otherUser?.nickname || '对方' }}</strong> 发送好友申请</div>
+        <van-field
+          v-model="requestMessage"
+          type="textarea"
+          rows="3"
+          placeholder="可以写点什么（选填）"
+          maxlength="200"
+          show-word-limit
+          autosize
+        />
+      </div>
+    </van-dialog>
   </div>
 </template>
 
@@ -204,7 +279,7 @@ import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { showToast, showDialog } from 'vant';
 import { getUser } from '../utils/storage';
-import { getMessages, sendMessage as apiSendMessage, getBottleDetail, getBackpackItems, sendChatGift, getIntimacy } from '../api';
+import { getMessages, sendMessage as apiSendMessage, getBottleDetail, getBackpackItems, sendChatGift, getIntimacy, getUserProfile, sendFriendRequest } from '../api';
 import AvatarDisplay from '../components/AvatarDisplay.vue';
 
 const route = useRoute();
@@ -230,6 +305,14 @@ const isSendingGift = ref(false);
 const showQuickReply = ref(false);
 const activeQuickCategory = ref(0);
 const intimacyValue = ref(0);
+const isFriend = ref(false);
+const hasPendingRequest = ref(false);
+const showProfilePopup = ref(false);
+const profileUser = ref(null);
+const isProfileSelf = ref(false);
+const showRequestDialog = ref(false);
+const requestMessage = ref('');
+const addingFriend = ref(false);
 
 const CONSECUTIVE_LIMIT = 5;
 
@@ -342,11 +425,22 @@ async function initChat() {
     };
     otherUserId.value = detail.other_id;
     
-    await Promise.all([fetchMessages(), fetchIntimacy()]);
+    await Promise.all([fetchMessages(), fetchIntimacy(), fetchFriendStatus()]);
   } catch (error) {
     showToast(error.businessMessage || error.httpMessage || '出现异常');
   } finally {
     loading.value = false;
+  }
+}
+
+async function fetchFriendStatus() {
+  if (!otherUserId.value) return;
+  try {
+    const profile = await getUserProfile(otherUserId.value);
+    isFriend.value = profile.isFriend || false;
+    hasPendingRequest.value = profile.hasPendingRequest || false;
+  } catch (error) {
+    console.error('获取好友状态失败:', error);
   }
 }
 
@@ -515,6 +609,76 @@ function useQuickReply(msg) {
   nextTick(() => {
     adjustTextareaHeight();
   });
+}
+
+async function showUserProfile(userId) {
+  if (!userId) return;
+  showProfilePopup.value = true;
+  profileUser.value = null;
+  isProfileSelf.value = userId === currentUserId.value;
+  try {
+    if (isProfileSelf.value) {
+      profileUser.value = {
+        ...currentUser.value,
+        isFriend: false,
+        hasPendingRequest: false
+      };
+    } else {
+      const profile = await getUserProfile(userId);
+      profileUser.value = profile;
+      if (userId === otherUserId.value) {
+        isFriend.value = profile.isFriend || false;
+        hasPendingRequest.value = profile.hasPendingRequest || false;
+      }
+    }
+  } catch (error) {
+    showToast(error.businessMessage || error.httpMessage || '获取用户信息失败');
+    showProfilePopup.value = false;
+  }
+}
+
+function handleAddFriend() {
+  if (isFriend.value) {
+    showToast('对方已经是你的好友了');
+    return;
+  }
+  if (hasPendingRequest.value) {
+    showToast('已发送过好友申请');
+    return;
+  }
+  if (intimacyValue.value < 100) {
+    showToast(`亲密度需达到100才能添加好友（当前：${intimacyValue.value}）`);
+    return;
+  }
+  requestMessage.value = '';
+  showRequestDialog.value = true;
+}
+
+async function confirmSendRequest() {
+  if (!otherUserId.value) return;
+  addingFriend.value = true;
+  try {
+    await sendFriendRequest(otherUserId.value, requestMessage.value.trim() || undefined);
+    showToast('好友申请已发送');
+    showRequestDialog.value = false;
+    hasPendingRequest.value = true;
+    if (profileUser.value && profileUser.value.id === otherUserId.value) {
+      profileUser.value.hasPendingRequest = true;
+    }
+  } catch (error) {
+    showToast(error.businessMessage || error.httpMessage || '发送失败');
+  } finally {
+    addingFriend.value = false;
+  }
+}
+
+function formatProfileDate(time) {
+  if (!time) return '';
+  const date = new Date(time);
+  const y = date.getFullYear();
+  const m = (date.getMonth() + 1).toString().padStart(2, '0');
+  const d = date.getDate().toString().padStart(2, '0');
+  return `${y}-${m}-${d}`;
 }
 </script>
 
@@ -1044,5 +1208,150 @@ function useQuickReply(msg) {
 
 .quick-reply-chat-btn.active {
   background: #667eea20;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.add-friend-btn {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 5px 10px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: #fff;
+  border-radius: 14px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+
+.add-friend-btn:active {
+  opacity: 0.8;
+}
+
+.clickable-avatar {
+  cursor: pointer;
+  transition: transform 0.15s;
+}
+
+.clickable-avatar:active {
+  transform: scale(0.95);
+}
+
+.chat-user-info {
+  cursor: pointer;
+}
+
+.profile-panel {
+  padding: 20px;
+}
+
+.profile-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 0 20px;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.profile-avatar {
+  font-size: 48px;
+  background: linear-gradient(135deg, #667eea15 0%, #764ba215 100%);
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.profile-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.profile-nickname-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.profile-nickname {
+  font-size: 18px;
+  font-weight: bold;
+  color: #333;
+}
+
+.gender-icon {
+  font-size: 16px;
+  color: #4a9eff;
+  font-weight: bold;
+}
+
+.gender-female {
+  color: #ff6b9d;
+}
+
+.profile-username {
+  font-size: 13px;
+  color: #999;
+  margin-bottom: 2px;
+}
+
+.profile-user-id {
+  font-size: 11px;
+  color: #bbb;
+  word-break: break-all;
+}
+
+.profile-section {
+  padding: 14px 0;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.profile-section:last-of-type {
+  border-bottom: none;
+}
+
+.profile-section-title {
+  font-size: 12px;
+  color: #999;
+  margin-bottom: 6px;
+}
+
+.profile-bio {
+  font-size: 14px;
+  color: #333;
+  line-height: 1.5;
+}
+
+.profile-no-bio {
+  font-size: 13px;
+  color: #bbb;
+}
+
+.profile-value {
+  font-size: 14px;
+  color: #333;
+}
+
+.profile-footer {
+  padding-top: 20px;
+}
+
+.self-hint {
+  text-align: center;
+  color: #999;
+  font-size: 14px;
+  padding: 10px;
+}
+
+.dialog-tip {
+  font-size: 14px;
+  color: #666;
+  margin-bottom: 12px;
+  text-align: center;
 }
 </style>
