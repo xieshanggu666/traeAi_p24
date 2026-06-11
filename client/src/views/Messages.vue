@@ -51,22 +51,65 @@
           <div class="section" v-if="sentBottles.length > 0 || loading">
             <div class="section-list">
               <van-swipe-cell v-for="bottle in sentBottles" :key="bottle.id">
-                <div class="msg-card" @click="handleSentClick(bottle)">
+                <div class="msg-card" :class="{ 'msg-card-pinned': bottle.is_pinned }" @click="handleSentClick(bottle)">
                   <div class="msg-avatar">
                     <AvatarDisplay :avatar="bottle.other_avatar" :size="46" />
+                    <span class="pinned-dot" v-if="bottle.is_pinned">⭐</span>
                   </div>
                   <div class="msg-body">
                     <div class="msg-top-row">
                       <span class="msg-name">{{ bottle.other_nickname }}</span>
                       <span class="msg-badge" :class="'badge-' + bottle.status">{{ getStatusText(bottle) }}</span>
+                      <van-tag v-if="bottle.is_pinned" type="warning" size="medium" plain class="pin-tag">置顶</van-tag>
                       <span class="msg-time">{{ formatTime(bottle.created_at) }}</span>
                     </div>
                     <div class="msg-bottom-row">
                       <span class="msg-preview">{{ bottle.content }}</span>
+                      <span class="pick-count" v-if="bottle.status === 'floating'">
+                        {{ bottle.pick_count || 0 }}/{{ bottle.maxPickCount || 5 }}
+                      </span>
+                    </div>
+                    <div class="msg-actions-row" v-if="bottle.status === 'floating'">
+                      <van-button
+                        size="mini"
+                        type="danger"
+                        plain
+                        round
+                        :disabled="!bottle.canRecall"
+                        @click.stop="handleRecall(bottle)"
+                      >
+                        {{ bottle.canRecall ? '撤回(10币)' : (bottle.canRecallReason || '不可撤回') }}
+                      </van-button>
+                      <van-button
+                        size="mini"
+                        type="warning"
+                        plain
+                        round
+                        :disabled="!bottle.canPin"
+                        @click.stop="handlePin(bottle)"
+                      >
+                        {{ bottle.is_pinned ? '已置顶' : (bottle.canPin ? '置顶(50币)' : '不可置顶') }}
+                      </van-button>
                     </div>
                   </div>
                 </div>
                 <template #right>
+                  <van-button
+                    v-if="bottle.canRecall"
+                    square
+                    type="warning"
+                    class="swipe-action"
+                    text="撤回"
+                    @click="handleRecall(bottle)"
+                  />
+                  <van-button
+                    v-if="bottle.canPin"
+                    square
+                    type="primary"
+                    class="swipe-action"
+                    text="置顶"
+                    @click="handlePin(bottle)"
+                  />
                   <van-button square type="danger" class="swipe-delete" text="删除" @click="handleDelete(bottle)" />
                 </template>
               </van-swipe-cell>
@@ -90,6 +133,16 @@
       <van-loading v-if="loading" color="#1989fa" style="margin-top: 40px; display: block; text-align: center;">加载中...</van-loading>
     </van-pull-refresh>
 
+    <van-dialog
+      v-model:show="showConfirm"
+      :title="confirmTitle"
+      :message="confirmMessage"
+      show-cancel-button
+      confirm-button-text="确认"
+      cancel-button-text="取消"
+      @confirm="doConfirmAction"
+    />
+
     <van-tabbar v-model="activeBottom" active-color="#1989fa">
       <van-tabbar-item name="home" icon="home-o" @click="goToHome">首页</van-tabbar-item>
       <van-tabbar-item name="messages" icon="chat-o" :badge="totalUnread > 0 ? totalUnread : ''">消息</van-tabbar-item>
@@ -105,7 +158,14 @@ import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import { showToast, showDialog } from 'vant';
 import { getUser } from '../utils/storage';
-import { getMyBottles, softDeleteBottle, deleteBottle, getUnreadCount } from '../api';
+import {
+  getMyBottles,
+  softDeleteBottle,
+  deleteBottle,
+  getUnreadCount,
+  recallBottle,
+  pinBottle
+} from '../api';
 import AvatarDisplay from '../components/AvatarDisplay.vue';
 
 const router = useRouter();
@@ -118,6 +178,11 @@ const loading = ref(false);
 const refreshing = ref(false);
 const totalUnread = ref(0);
 const fetchError = ref(null);
+const showConfirm = ref(false);
+const confirmTitle = ref('');
+const confirmMessage = ref('');
+let confirmCallback = null;
+let currentBottle = null;
 let timer = null;
 
 const currentUserId = computed(() => user.value?.id);
@@ -149,7 +214,11 @@ const unreadRepliedCount = computed(() => {
 const sentBottles = computed(() => {
   return allBottles.value
     .filter(b => b.type === 'sent')
-    .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+    .sort((a, b) => {
+      if (a.is_pinned && !b.is_pinned) return -1;
+      if (!a.is_pinned && b.is_pinned) return 1;
+      return new Date(b.created_at) - new Date(a.created_at);
+    });
 });
 
 onMounted(() => {
@@ -236,6 +305,72 @@ async function handleDelete(bottle) {
     }
   } catch {
     // cancelled
+  }
+}
+
+function handleRecall(bottle) {
+  if (!bottle.canRecall) {
+    showToast(bottle.canRecallReason || '当前不可撤回');
+    return;
+  }
+
+  currentBottle = bottle;
+  confirmTitle.value = '确认撤回';
+  confirmMessage.value = '确定要撤回这个瓶子吗？将消耗 10 漂流币，同时返还 1 次扔瓶子次数。';
+  confirmCallback = doRecall;
+  showConfirm.value = true;
+}
+
+async function doRecall() {
+  if (!currentBottle) return;
+
+  try {
+    const result = await recallBottle(currentBottle.id);
+    showToast(result._message || '撤回成功');
+    allBottles.value = allBottles.value.filter(b => b.id !== currentBottle.id);
+    await fetchUnreadCount();
+  } catch (error) {
+    showToast(error.businessMessage || error.httpMessage || '撤回失败');
+  } finally {
+    currentBottle = null;
+  }
+}
+
+function handlePin(bottle) {
+  if (bottle.is_pinned) {
+    showToast('该瓶子已经是置顶状态');
+    return;
+  }
+
+  if (!bottle.canPin) {
+    showToast('该瓶子无法置顶');
+    return;
+  }
+
+  currentBottle = bottle;
+  confirmTitle.value = '确认置顶';
+  confirmMessage.value = '确定要置顶这个瓶子吗？将消耗 50 漂流币，置顶后瓶子被捞取概率提升至 100%。';
+  confirmCallback = doPin;
+  showConfirm.value = true;
+}
+
+async function doPin() {
+  if (!currentBottle) return;
+
+  try {
+    const result = await pinBottle(currentBottle.id);
+    showToast(result._message || '置顶成功');
+    await fetchBottles();
+  } catch (error) {
+    showToast(error.businessMessage || error.httpMessage || '置顶失败');
+  } finally {
+    currentBottle = null;
+  }
+}
+
+function doConfirmAction() {
+  if (confirmCallback) {
+    confirmCallback();
   }
 }
 
@@ -359,6 +494,11 @@ function goToMy() { router.push('/my'); }
   border-left: 3px solid #667eea;
 }
 
+.msg-card-pinned {
+  border-left: 3px solid #ff9800;
+  background: linear-gradient(135deg, #fffdf5 0%, #fff 100%);
+}
+
 .msg-avatar {
   position: relative;
   flex-shrink: 0;
@@ -373,6 +513,13 @@ function goToMy() { router.push('/my'); }
   background: #ff4d4f;
   border-radius: 50%;
   border: 2px solid #fff;
+}
+
+.pinned-dot {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  font-size: 14px;
 }
 
 .msg-body {
@@ -396,7 +543,7 @@ function goToMy() { router.push('/my'); }
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  max-width: 140px;
+  max-width: 100px;
   flex-shrink: 0;
 }
 
@@ -427,6 +574,10 @@ function goToMy() { router.push('/my'); }
 .badge-floating {
   background: #99999920;
   color: #999;
+}
+
+.pin-tag {
+  flex-shrink: 0;
 }
 
 .msg-bottom-row {
@@ -462,6 +613,21 @@ function goToMy() { router.push('/my'); }
   justify-content: center;
   padding: 0 5px;
   flex-shrink: 0;
+}
+
+.pick-count {
+  font-size: 11px;
+  color: #ff9800;
+  background: #fff3e0;
+  padding: 1px 6px;
+  border-radius: 8px;
+  flex-shrink: 0;
+}
+
+.msg-actions-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
 }
 
 .empty-state {
@@ -513,6 +679,10 @@ function goToMy() { router.push('/my'); }
 .error-desc {
   font-size: 13px;
   color: #999;
+}
+
+.swipe-action {
+  height: 100% !important;
 }
 
 .swipe-delete {
