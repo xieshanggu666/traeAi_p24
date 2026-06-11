@@ -825,7 +825,7 @@ router.get('/my', async (req, res) => {
     const userId = req.user.userId;
 
     const [sentBottles] = await pool.execute(
-      'SELECT b.id, b.content, b.status, b.created_at, b.picked_at, b.pick_count, b.is_pinned, b.pinned_at, b.expires_at, ' +
+      'SELECT b.id, b.sender_id, b.content, b.status, b.created_at, b.picked_at, b.pick_count, b.is_pinned, b.pinned_at, b.expires_at, ' +
       '"sent" as type, ' +
       'COALESCE(u2.nickname, "等待被捞取") as other_nickname, ' +
       'COALESCE(u2.avatar, "🌊") as other_avatar, ' +
@@ -890,7 +890,7 @@ router.get('/my', async (req, res) => {
 
       allBottles = allBottles.map(bottle => {
         const msg = messageMap[bottle.id];
-        return {
+        const enhancedBottle = {
           ...bottle,
           latest_message: msg ? msg.latest_message : null,
           latest_sender_id: msg ? msg.latest_sender_id : null,
@@ -898,6 +898,41 @@ router.get('/my', async (req, res) => {
           latest_message_time: msg ? msg.latest_message_time : null,
           unread_count: unreadMap[bottle.id] || 0
         };
+
+        if (enhancedBottle.sender_id === userId || enhancedBottle.type === 'sent') {
+          const createdAt = new Date(enhancedBottle.created_at);
+          const now = new Date();
+          const timeDiffMinutes = (now - createdAt) / (1000 * 60);
+          
+          let canRecall = true;
+          let canRecallReason = '';
+          
+          if (timeDiffMinutes > RECALL_TIME_LIMIT_MINUTES) {
+            canRecall = false;
+            canRecallReason = '已超过5分钟';
+          } else if (enhancedBottle.status !== 'floating') {
+            canRecall = false;
+            canRecallReason = '瓶子已被捞取';
+          } else if (enhancedBottle.pick_count > 0) {
+            canRecall = false;
+            canRecallReason = '已有用户捞取';
+          }
+          
+          enhancedBottle.canRecall = canRecall;
+          enhancedBottle.canRecallReason = canRecallReason;
+          enhancedBottle.recallTimeRemaining = Math.max(0, RECALL_TIME_LIMIT_MINUTES - timeDiffMinutes);
+          enhancedBottle.recallCoinCost = RECALL_COIN_COST;
+          enhancedBottle.canPin = enhancedBottle.status === 'floating' && !enhancedBottle.is_pinned && enhancedBottle.pick_count < MAX_PICK_COUNT;
+          enhancedBottle.pinCoinCost = PIN_COIN_COST;
+        } else {
+          enhancedBottle.canRecall = false;
+          enhancedBottle.canRecallReason = '不是发送者';
+          enhancedBottle.canPin = false;
+        }
+
+        enhancedBottle.maxPickCount = MAX_PICK_COUNT;
+
+        return enhancedBottle;
       });
     }
 

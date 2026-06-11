@@ -82,6 +82,14 @@ export const softDeleteBottle = (bottleId) => {
   return request.post(`/bottle/soft-delete/${bottleId}`);
 };
 
+export const recallBottle = (bottleId) => {
+  return request.post(`/bottle/recall/${bottleId}`);
+};
+
+export const pinBottle = (bottleId) => {
+  return request.post(`/bottle/pin/${bottleId}`);
+};
+
 export const getWelfareInfo = () => {
   return request.get('/welfare/info');
 };
