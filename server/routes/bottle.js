@@ -4,8 +4,13 @@ const multer = require('multer');
 const path = require('path');
 const pool = require('../config/db');
 const { generateUUID, generateResponse } = require('../utils/helper');
+const { OPERATION_TYPES, logOperation } = require('../utils/bottleLogger');
+const { BOTTLE_EXPIRE_DAYS, MAX_PICK_COUNT } = require('../utils/bottleScheduler');
 
 const DAILY_LIMIT = 20;
+const RECALL_TIME_LIMIT_MINUTES = 5;
+const RECALL_COIN_COST = 10;
+const PIN_COIN_COST = 50;
 
 const VALID_TAGS = ['情绪倾诉', '交友', '求助', '树洞', '闲聊', '考研搭子', '游戏组队'];
 
@@ -59,6 +64,19 @@ async function getDailyCount(userId, date, field) {
   return rows.length > 0 ? rows[0].count : 0;
 }
 
+async function addCoins(userId, amount, type, source, conn) {
+  const db = conn || pool;
+  await db.execute(
+    'UPDATE users SET coins = coins + ? WHERE id = ?',
+    [amount, userId]
+  );
+  const recordId = generateUUID();
+  await db.execute(
+    'INSERT INTO coin_records (id, user_id, amount, type, source) VALUES (?, ?, ?, ?, ?)',
+    [recordId, userId, amount, type, source]
+  );
+}
+
 router.get('/daily-limits', async (req, res) => {
   try {
     const userId = req.user.userId;
@@ -105,19 +123,25 @@ router.post('/upload-image', (req, res) => {
 });
 
 router.post('/throw', async (req, res) => {
+  const conn = await pool.getConnection();
   try {
+    await conn.beginTransaction();
+
     const { content, tag, imageUrl, targetGender, targetMinAge, targetMaxAge } = req.body;
     const senderId = req.user.userId;
 
     if (!content || content.trim().length === 0) {
+      await conn.rollback();
       return res.status(400).json(generateResponse(false, null, '内容不能为空'));
     }
 
     if (tag && !VALID_TAGS.includes(tag)) {
+      await conn.rollback();
       return res.status(400).json(generateResponse(false, null, '标签无效'));
     }
 
     if (targetGender && !['all', 'male', 'female'].includes(targetGender)) {
+      await conn.rollback();
       return res.status(400).json(generateResponse(false, null, '目标性别无效'));
     }
 
@@ -125,6 +149,7 @@ router.post('/throw', async (req, res) => {
     const validatedMaxAge = targetMaxAge ? parseInt(targetMaxAge) : null;
 
     if (validatedMinAge !== null && validatedMaxAge !== null && validatedMinAge > validatedMaxAge) {
+      await conn.rollback();
       return res.status(400).json(generateResponse(false, null, '最小年龄不能大于最大年龄'));
     }
 
@@ -133,20 +158,29 @@ router.post('/throw', async (req, res) => {
     const throwCount = await getDailyCount(senderId, today, 'throw_count');
 
     if (throwCount >= DAILY_LIMIT) {
+      await conn.rollback();
       return res.status(429).json(generateResponse(false, null, `今日扔瓶子次数已达上限(${DAILY_LIMIT}次)，明天再来吧`));
     }
 
     const bottleId = generateUUID();
 
-    await pool.execute(
-      'INSERT INTO bottles (id, sender_id, content, tag, image_url, target_gender, target_min_age, target_max_age, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    await conn.execute(
+      `INSERT INTO bottles (id, sender_id, content, tag, image_url, target_gender, target_min_age, target_max_age, status, expires_at) 
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, DATE_ADD(NOW(), INTERVAL ${BOTTLE_EXPIRE_DAYS} DAY))`,
       [bottleId, senderId, content.trim(), tag || null, imageUrl || null, targetGender || 'all', validatedMinAge, validatedMaxAge, 'floating']
     );
 
-    await pool.execute(
+    await conn.execute(
       'UPDATE daily_stats SET throw_count = throw_count + 1 WHERE user_id = ? AND stat_date = ?',
       [senderId, today]
     );
+
+    await logOperation(bottleId, senderId, OPERATION_TYPES.THROW, 0, {
+      content: content.trim().substring(0, 100),
+      tag: tag || null
+    }, conn);
+
+    await conn.commit();
 
     res.json(generateResponse(true, {
       id: bottleId,
@@ -156,17 +190,20 @@ router.post('/throw', async (req, res) => {
       targetGender: targetGender || 'all',
       targetMinAge: validatedMinAge,
       targetMaxAge: validatedMaxAge,
+      expiresInDays: BOTTLE_EXPIRE_DAYS,
       throwRemaining: Math.max(0, DAILY_LIMIT - throwCount - 1)
     }, '瓶子扔出成功'));
   } catch (error) {
     console.error('扔瓶子失败:', error);
     res.status(500).json(generateResponse(false, null, '扔瓶子失败'));
+  } finally {
+    conn.release();
   }
 });
 
 function buildFilterQuery(filters, pickerId, isCount = false, pickerInfo = null) {
-  const conditions = ['b.status = ?', 'b.sender_id != ?'];
-  const params = ['floating', pickerId];
+  const conditions = ['b.status = ?', 'b.sender_id != ?', 'b.is_deleted = 0', 'b.pick_count < ?'];
+  const params = ['floating', pickerId, MAX_PICK_COUNT];
 
   if (pickerInfo) {
     if (pickerInfo.gender) {
@@ -235,7 +272,7 @@ function buildFilterQuery(filters, pickerId, isCount = false, pickerInfo = null)
   const whereClause = conditions.join(' AND ');
   const selectFields = isCount
     ? 'COUNT(*) as total'
-    : 'b.id, b.sender_id, b.content, b.tag, b.image_url, b.target_gender, b.target_min_age, b.target_max_age, b.created_at, u.nickname as sender_nickname, u.avatar as sender_avatar, u.gender as sender_gender, u.birthday as sender_birthday';
+    : 'b.id, b.sender_id, b.content, b.tag, b.image_url, b.target_gender, b.target_min_age, b.target_max_age, b.created_at, b.expires_at, b.pick_count, b.is_pinned, b.pinned_at, u.nickname as sender_nickname, u.avatar as sender_avatar, u.gender as sender_gender, u.birthday as sender_birthday';
 
   return {
     query: `SELECT ${selectFields} FROM bottles b LEFT JOIN users u ON b.sender_id = u.id WHERE ${whereClause}`,
@@ -274,6 +311,15 @@ async function getPickerInfo(pickerId) {
   };
 }
 
+async function hasPickedBottle(bottleId, pickerId, conn) {
+  const db = conn || pool;
+  const [rows] = await db.execute(
+    'SELECT id FROM bottle_pick_records WHERE bottle_id = ? AND picker_id = ?',
+    [bottleId, pickerId]
+  );
+  return rows.length > 0;
+}
+
 router.post('/pick/count', async (req, res) => {
   try {
     const pickerId = req.user.userId;
@@ -292,8 +338,63 @@ router.post('/pick/count', async (req, res) => {
   }
 });
 
+async function getPinnedBottles(filters, pickerId, pickerInfo) {
+  const conditions = [
+    'b.status = ?', 
+    'b.sender_id != ?', 
+    'b.is_deleted = 0', 
+    'b.is_pinned = 1',
+    'b.pick_count < ?'
+  ];
+  const params = ['floating', pickerId, MAX_PICK_COUNT];
+
+  if (pickerInfo) {
+    if (pickerInfo.gender) {
+      conditions.push('(b.target_gender = ? OR b.target_gender = ? OR b.target_gender IS NULL)');
+      params.push('all', pickerInfo.gender);
+    }
+
+    if (pickerInfo.age !== null && pickerInfo.age !== undefined) {
+      conditions.push('(b.target_min_age IS NULL OR b.target_min_age <= ?)');
+      params.push(pickerInfo.age);
+      conditions.push('(b.target_max_age IS NULL OR b.target_max_age >= ?)');
+      params.push(pickerInfo.age);
+    }
+  }
+
+  if (filters) {
+    if (filters.tag && filters.tag !== 'all') {
+      conditions.push('b.tag = ?');
+      params.push(filters.tag);
+    }
+
+    if (filters.gender && filters.gender !== 'all') {
+      const genderMap = {
+        'male': '男',
+        'female': '女',
+        '男': '男',
+        '女': '女'
+      };
+      const genderValue = genderMap[filters.gender] || filters.gender;
+      conditions.push('u.gender = ?');
+      params.push(genderValue);
+    }
+  }
+
+  const whereClause = conditions.join(' AND ');
+  const selectFields = 'b.id, b.sender_id, b.content, b.tag, b.image_url, b.target_gender, b.target_min_age, b.target_max_age, b.created_at, b.expires_at, b.pick_count, b.is_pinned, b.pinned_at, u.nickname as sender_nickname, u.avatar as sender_avatar, u.gender as sender_gender, u.birthday as sender_birthday';
+
+  const query = `SELECT ${selectFields} FROM bottles b LEFT JOIN users u ON b.sender_id = u.id WHERE ${whereClause} ORDER BY b.pinned_at DESC`;
+  
+  const [rows] = await pool.execute(query, params);
+  return rows;
+}
+
 router.post('/pick', async (req, res) => {
+  const conn = await pool.getConnection();
   try {
+    await conn.beginTransaction();
+
     const pickerId = req.user.userId;
     const filters = req.body.filters || {};
 
@@ -302,30 +403,74 @@ router.post('/pick', async (req, res) => {
     const pickCount = await getDailyCount(pickerId, today, 'pick_count');
 
     if (pickCount >= DAILY_LIMIT) {
+      await conn.rollback();
       return res.status(429).json(generateResponse(false, null, `今日捞瓶子次数已达上限(${DAILY_LIMIT}次)，明天再来吧`));
     }
 
     const pickerInfo = await getPickerInfo(pickerId);
-    const { query, params } = buildFilterQuery(filters, pickerId, false, pickerInfo);
-    const fullQuery = `${query} ORDER BY RAND() LIMIT 1`;
 
-    const [floatingBottles] = await pool.execute(fullQuery, params);
+    let bottle = null;
+    let isPinned = false;
 
-    if (floatingBottles.length === 0) {
-      return res.json(generateResponse(false, null, '海里暂时没有符合条件的漂流瓶'));
+    const pinnedBottles = await getPinnedBottles(filters, pickerId, pickerInfo);
+    
+    const availablePinnedBottles = [];
+    for (const pb of pinnedBottles) {
+      const picked = await hasPickedBottle(pb.id, pickerId, conn);
+      if (!picked) {
+        availablePinnedBottles.push(pb);
+      }
     }
 
-    const bottle = floatingBottles[0];
+    if (availablePinnedBottles.length > 0) {
+      const randomIndex = Math.floor(Math.random() * availablePinnedBottles.length);
+      bottle = availablePinnedBottles[randomIndex];
+      isPinned = true;
+    } else {
+      const { query, params } = buildFilterQuery(filters, pickerId, false, pickerInfo);
+      const fullQuery = `${query} ORDER BY RAND() LIMIT 1`;
 
-    await pool.execute(
-      'UPDATE bottles SET status = ?, picker_id = ?, picked_at = NOW() WHERE id = ?',
-      ['picked', pickerId, bottle.id]
+      const [floatingBottles] = await conn.execute(fullQuery, params);
+
+      if (floatingBottles.length === 0) {
+        await conn.rollback();
+        return res.json(generateResponse(false, null, '海里暂时没有符合条件的漂流瓶'));
+      }
+
+      bottle = floatingBottles[0];
+    }
+
+    const alreadyPicked = await hasPickedBottle(bottle.id, pickerId, conn);
+    if (alreadyPicked) {
+      await conn.rollback();
+      return res.status(400).json(generateResponse(false, null, '你已经捞过这个瓶子了'));
+    }
+
+    const pickRecordId = generateUUID();
+    await conn.execute(
+      'INSERT INTO bottle_pick_records (id, bottle_id, picker_id) VALUES (?, ?, ?)',
+      [pickRecordId, bottle.id, pickerId]
     );
 
-    await pool.execute(
+    const [updatedBottle] = await conn.execute(
+      'UPDATE bottles SET pick_count = pick_count + 1 WHERE id = ?',
+      [bottle.id]
+    );
+
+    await conn.execute(
       'UPDATE daily_stats SET pick_count = pick_count + 1 WHERE user_id = ? AND stat_date = ?',
       [pickerId, today]
     );
+
+    await logOperation(bottle.id, pickerId, OPERATION_TYPES.PICK, 0, {
+      isPinned,
+      pickCountAfter: (bottle.pick_count || 0) + 1
+    }, conn);
+
+    await conn.commit();
+
+    const newPickCount = (bottle.pick_count || 0) + 1;
+    const isMaxPick = newPickCount >= MAX_PICK_COUNT;
 
     res.json(generateResponse(true, {
       id: bottle.id,
@@ -341,11 +486,20 @@ router.post('/pick', async (req, res) => {
       senderGender: bottle.sender_gender,
       senderBirthday: bottle.sender_birthday,
       createdAt: bottle.created_at,
+      expiresAt: bottle.expires_at,
+      pickCount: newPickCount,
+      isPinned: !!bottle.is_pinned,
+      pinnedAt: bottle.pinned_at,
+      isMaxPick,
+      maxPickCount: MAX_PICK_COUNT,
       pickRemaining: Math.max(0, DAILY_LIMIT - pickCount - 1)
-    }, '捞到瓶子了'));
+    }, isPinned ? '捞到置顶瓶子了！' : '捞到瓶子了'));
   } catch (error) {
+    await conn.rollback();
     console.error('捞瓶子失败:', error);
     res.status(500).json(generateResponse(false, null, '捞瓶子失败'));
+  } finally {
+    conn.release();
   }
 });
 
@@ -362,6 +516,10 @@ router.post('/return', async (req, res) => {
       ['floating', bottleId]
     );
 
+    await logOperation(bottleId, null, OPERATION_TYPES.RETURN, 0, {
+      note: '扔回海里'
+    });
+
     res.json(generateResponse(true, null, '瓶子已扔回海里'));
   } catch (error) {
     console.error('扔回瓶子失败:', error);
@@ -370,35 +528,46 @@ router.post('/return', async (req, res) => {
 });
 
 router.post('/reply', async (req, res) => {
+  const conn = await pool.getConnection();
   try {
+    await conn.beginTransaction();
+
     const { bottleId, content } = req.body;
     const pickerId = req.user.userId;
 
     if (!bottleId || !content || content.trim().length === 0) {
+      await conn.rollback();
       return res.status(400).json(generateResponse(false, null, '参数不完整'));
     }
 
-    const [bottleRows] = await pool.execute(
-      'SELECT sender_id FROM bottles WHERE id = ?',
+    const [bottleRows] = await conn.execute(
+      'SELECT sender_id, status FROM bottles WHERE id = ? AND is_deleted = 0',
       [bottleId]
     );
 
     if (bottleRows.length === 0) {
+      await conn.rollback();
       return res.status(404).json(generateResponse(false, null, '瓶子不存在'));
     }
 
     const senderId = bottleRows[0].sender_id;
 
-    await pool.execute(
+    await conn.execute(
       'UPDATE bottles SET status = ? WHERE id = ?',
       ['replied', bottleId]
     );
 
     const messageId = generateUUID();
-    await pool.execute(
+    await conn.execute(
       'INSERT INTO messages (id, bottle_id, sender_id, receiver_id, content) VALUES (?, ?, ?, ?, ?)',
       [messageId, bottleId, pickerId, senderId, content.trim()]
     );
+
+    await logOperation(bottleId, pickerId, OPERATION_TYPES.REPLY, 0, {
+      content: content.trim().substring(0, 100)
+    }, conn);
+
+    await conn.commit();
 
     res.json(generateResponse(true, {
       messageId,
@@ -407,8 +576,247 @@ router.post('/reply', async (req, res) => {
       pickerId
     }, '回复成功，已开启私聊'));
   } catch (error) {
+    await conn.rollback();
     console.error('回复瓶子失败:', error);
     res.status(500).json(generateResponse(false, null, '回复瓶子失败'));
+  } finally {
+    conn.release();
+  }
+});
+
+router.post('/recall/:bottleId', async (req, res) => {
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+
+    const { bottleId } = req.params;
+    const userId = req.user.userId;
+
+    if (!bottleId) {
+      await conn.rollback();
+      return res.status(400).json(generateResponse(false, null, '参数不完整'));
+    }
+
+    const [bottleRows] = await conn.execute(
+      `SELECT id, sender_id, status, created_at, pick_count 
+       FROM bottles 
+       WHERE id = ? AND is_deleted = 0`,
+      [bottleId]
+    );
+
+    if (bottleRows.length === 0) {
+      await conn.rollback();
+      return res.status(404).json(generateResponse(false, null, '瓶子不存在'));
+    }
+
+    const bottle = bottleRows[0];
+
+    if (bottle.sender_id !== userId) {
+      await conn.rollback();
+      return res.status(403).json(generateResponse(false, null, '无权撤回此瓶子'));
+    }
+
+    const createdAt = new Date(bottle.created_at);
+    const now = new Date();
+    const timeDiffMinutes = (now - createdAt) / (1000 * 60);
+
+    if (timeDiffMinutes > RECALL_TIME_LIMIT_MINUTES) {
+      await conn.rollback();
+      return res.status(400).json(generateResponse(false, null, `只能撤回${RECALL_TIME_LIMIT_MINUTES}分钟内发布的瓶子`));
+    }
+
+    const [messageCount] = await conn.execute(
+      'SELECT COUNT(*) as count FROM messages WHERE bottle_id = ?',
+      [bottleId]
+    );
+
+    if (messageCount[0].count > 0) {
+      await conn.rollback();
+      return res.status(400).json(generateResponse(false, null, '瓶子已有回复，无法撤回'));
+    }
+
+    const [userRows] = await conn.execute(
+      'SELECT coins FROM users WHERE id = ? FOR UPDATE',
+      [userId]
+    );
+
+    if (userRows.length === 0) {
+      await conn.rollback();
+      return res.status(404).json(generateResponse(false, null, '用户不存在'));
+    }
+
+    if (userRows[0].coins < RECALL_COIN_COST) {
+      await conn.rollback();
+      return res.status(400).json(generateResponse(false, null, '漂流币不足'));
+    }
+
+    await conn.execute(
+      'UPDATE users SET coins = coins - ? WHERE id = ?',
+      [RECALL_COIN_COST, userId]
+    );
+
+    const coinRecordId = generateUUID();
+    await conn.execute(
+      'INSERT INTO coin_records (id, user_id, amount, type, source) VALUES (?, ?, ?, ?, ?)',
+      [coinRecordId, userId, -RECALL_COIN_COST, 'bottle_recall', '撤回漂流瓶']
+    );
+
+    const today = getLocalDateStr();
+    await ensureDailyStat(userId, today);
+    await conn.execute(
+      'UPDATE daily_stats SET throw_count = GREATEST(0, throw_count - 1) WHERE user_id = ? AND stat_date = ?',
+      [userId, today]
+    );
+
+    await conn.execute(
+      'DELETE FROM bottle_pick_records WHERE bottle_id = ?',
+      [bottleId]
+    );
+
+    await conn.execute(
+      'UPDATE bottles SET is_deleted = 1 WHERE id = ?',
+      [bottleId]
+    );
+
+    const logId = generateUUID();
+    await conn.execute(
+      'INSERT INTO bottle_operation_logs (id, bottle_id, user_id, operation_type, coin_cost, detail) VALUES (?, ?, ?, ?, ?, ?)',
+      [logId, bottleId, userId, OPERATION_TYPES.RECALL, RECALL_COIN_COST, JSON.stringify({
+        recallTime: timeDiffMinutes.toFixed(2) + '分钟',
+        returnedThrowCount: true,
+        reason: 'user_initiated'
+      })]
+    );
+
+    const [updatedUser] = await conn.execute(
+      'SELECT coins FROM users WHERE id = ?',
+      [userId]
+    );
+
+    await conn.commit();
+
+    res.json(generateResponse(true, {
+      bottleId,
+      remainingCoins: updatedUser[0].coins,
+      coinCost: RECALL_COIN_COST,
+      throwCountReturned: true
+    }, '瓶子撤回成功，已返还1次扔瓶子次数'));
+  } catch (error) {
+    await conn.rollback();
+    console.error('撤回瓶子失败:', error);
+    res.status(500).json(generateResponse(false, null, '撤回瓶子失败'));
+  } finally {
+    conn.release();
+  }
+});
+
+router.post('/pin/:bottleId', async (req, res) => {
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+
+    const { bottleId } = req.params;
+    const userId = req.user.userId;
+
+    if (!bottleId) {
+      await conn.rollback();
+      return res.status(400).json(generateResponse(false, null, '参数不完整'));
+    }
+
+    const [bottleRows] = await conn.execute(
+      `SELECT id, sender_id, status, is_pinned, pick_count 
+       FROM bottles 
+       WHERE id = ? AND is_deleted = 0`,
+      [bottleId]
+    );
+
+    if (bottleRows.length === 0) {
+      await conn.rollback();
+      return res.status(404).json(generateResponse(false, null, '瓶子不存在'));
+    }
+
+    const bottle = bottleRows[0];
+
+    if (bottle.sender_id !== userId) {
+      await conn.rollback();
+      return res.status(403).json(generateResponse(false, null, '无权置顶此瓶子'));
+    }
+
+    if (bottle.status !== 'floating') {
+      await conn.rollback();
+      return res.status(400).json(generateResponse(false, null, '只能置顶漂浮中的瓶子'));
+    }
+
+    if (bottle.is_pinned) {
+      await conn.rollback();
+      return res.status(400).json(generateResponse(false, null, '瓶子已经是置顶状态'));
+    }
+
+    if (bottle.pick_count >= MAX_PICK_COUNT) {
+      await conn.rollback();
+      return res.status(400).json(generateResponse(false, null, '瓶子捞取次数已达上限，无法置顶'));
+    }
+
+    const [userRows] = await conn.execute(
+      'SELECT coins FROM users WHERE id = ? FOR UPDATE',
+      [userId]
+    );
+
+    if (userRows.length === 0) {
+      await conn.rollback();
+      return res.status(404).json(generateResponse(false, null, '用户不存在'));
+    }
+
+    if (userRows[0].coins < PIN_COIN_COST) {
+      await conn.rollback();
+      return res.status(400).json(generateResponse(false, null, '漂流币不足'));
+    }
+
+    await conn.execute(
+      'UPDATE users SET coins = coins - ? WHERE id = ?',
+      [PIN_COIN_COST, userId]
+    );
+
+    const coinRecordId = generateUUID();
+    await conn.execute(
+      'INSERT INTO coin_records (id, user_id, amount, type, source) VALUES (?, ?, ?, ?, ?)',
+      [coinRecordId, userId, -PIN_COIN_COST, 'bottle_pin', '置顶漂流瓶']
+    );
+
+    await conn.execute(
+      'UPDATE bottles SET is_pinned = 1, pinned_at = NOW() WHERE id = ?',
+      [bottleId]
+    );
+
+    const logId = generateUUID();
+    await conn.execute(
+      'INSERT INTO bottle_operation_logs (id, bottle_id, user_id, operation_type, coin_cost, detail) VALUES (?, ?, ?, ?, ?, ?)',
+      [logId, bottleId, userId, OPERATION_TYPES.PIN, PIN_COIN_COST, JSON.stringify({
+        statusBefore: bottle.status,
+        isPinnedBefore: bottle.is_pinned
+      })]
+    );
+
+    const [updatedUser] = await conn.execute(
+      'SELECT coins FROM users WHERE id = ?',
+      [userId]
+    );
+
+    await conn.commit();
+
+    res.json(generateResponse(true, {
+      bottleId,
+      isPinned: true,
+      pinnedAt: new Date(),
+      remainingCoins: updatedUser[0].coins,
+      coinCost: PIN_COIN_COST
+    }, '瓶子置顶成功'));
+  } catch (error) {
+    await conn.rollback();
+    console.error('置顶瓶子失败:', error);
+    res.status(500).json(generateResponse(false, null, '置顶瓶子失败'));
+  } finally {
+    conn.release();
   }
 });
 
@@ -417,20 +825,20 @@ router.get('/my', async (req, res) => {
     const userId = req.user.userId;
 
     const [sentBottles] = await pool.execute(
-      'SELECT b.id, b.content, b.status, b.created_at, b.picked_at, ' +
+      'SELECT b.id, b.content, b.status, b.created_at, b.picked_at, b.pick_count, b.is_pinned, b.pinned_at, b.expires_at, ' +
       '"sent" as type, ' +
       'COALESCE(u2.nickname, "等待被捞取") as other_nickname, ' +
       'COALESCE(u2.avatar, "🌊") as other_avatar, ' +
       'u2.id as other_id ' +
       'FROM bottles b ' +
       'LEFT JOIN users u2 ON b.picker_id = u2.id ' +
-      'WHERE b.sender_id = ? ' +
+      'WHERE b.sender_id = ? AND b.is_deleted = 0 ' +
       'ORDER BY b.created_at DESC',
       [userId]
     );
 
     const [repliedBottles] = await pool.execute(
-      'SELECT b.id, b.content, b.status, b.created_at, b.picked_at, ' +
+      'SELECT b.id, b.content, b.status, b.created_at, b.picked_at, b.pick_count, b.is_pinned, b.pinned_at, ' +
       'b.picker_deleted_at, ' +
       '"replied" as type, ' +
       'u1.nickname as other_nickname, ' +
@@ -438,7 +846,7 @@ router.get('/my', async (req, res) => {
       'u1.id as other_id ' +
       'FROM bottles b ' +
       'LEFT JOIN users u1 ON b.sender_id = u1.id ' +
-      'WHERE b.picker_id = ? AND b.status = "replied" ' +
+      'WHERE b.picker_id = ? AND b.status = "replied" AND b.is_deleted = 0 ' +
       'ORDER BY b.created_at DESC',
       [userId]
     );
@@ -524,14 +932,14 @@ router.get('/:bottleId', async (req, res) => {
     }
 
     const [rows] = await pool.execute(
-      'SELECT b.id, b.sender_id, b.picker_id, b.content, b.status, b.created_at, ' +
+      'SELECT b.id, b.sender_id, b.picker_id, b.content, b.status, b.created_at, b.expires_at, b.pick_count, b.is_pinned, b.pinned_at, ' +
       'CASE WHEN b.sender_id = ? THEN u2.nickname ELSE u1.nickname END as other_nickname, ' +
       'CASE WHEN b.sender_id = ? THEN u2.avatar ELSE u1.avatar END as other_avatar, ' +
       'CASE WHEN b.sender_id = ? THEN u2.id ELSE u1.id END as other_id ' +
       'FROM bottles b ' +
       'LEFT JOIN users u1 ON b.sender_id = u1.id ' +
       'LEFT JOIN users u2 ON b.picker_id = u2.id ' +
-      'WHERE b.id = ? AND (b.sender_id = ? OR b.picker_id = ?)',
+      'WHERE b.id = ? AND (b.sender_id = ? OR b.picker_id = ?) AND b.is_deleted = 0',
       [userId, userId, userId, bottleId, userId, userId]
     );
 
@@ -539,7 +947,22 @@ router.get('/:bottleId', async (req, res) => {
       return res.status(404).json(generateResponse(false, null, '瓶子不存在或无权限查看'));
     }
 
-    res.json(generateResponse(true, rows[0], '获取瓶子详情成功'));
+    const bottle = rows[0];
+    
+    if (bottle.sender_id === userId) {
+      const createdAt = new Date(bottle.created_at);
+      const now = new Date();
+      const timeDiffMinutes = (now - createdAt) / (1000 * 60);
+      bottle.canRecall = timeDiffMinutes <= RECALL_TIME_LIMIT_MINUTES && bottle.status === 'floating' && bottle.pick_count === 0;
+      bottle.recallTimeRemaining = Math.max(0, RECALL_TIME_LIMIT_MINUTES - timeDiffMinutes);
+      bottle.recallCoinCost = RECALL_COIN_COST;
+      bottle.canPin = bottle.status === 'floating' && !bottle.is_pinned && bottle.pick_count < MAX_PICK_COUNT;
+      bottle.pinCoinCost = PIN_COIN_COST;
+    }
+
+    bottle.maxPickCount = MAX_PICK_COUNT;
+
+    res.json(generateResponse(true, bottle, '获取瓶子详情成功'));
   } catch (error) {
     console.error('获取瓶子详情失败:', error);
     res.status(500).json(generateResponse(false, null, '获取瓶子详情失败'));
@@ -556,7 +979,7 @@ router.delete('/:bottleId', async (req, res) => {
     }
 
     const [rows] = await pool.execute(
-      'SELECT sender_id FROM bottles WHERE id = ?',
+      'SELECT sender_id FROM bottles WHERE id = ? AND is_deleted = 0',
       [bottleId]
     );
 
@@ -568,7 +991,7 @@ router.delete('/:bottleId', async (req, res) => {
       return res.status(403).json(generateResponse(false, null, '无权删除此瓶子'));
     }
 
-    await pool.execute('DELETE FROM bottles WHERE id = ?', [bottleId]);
+    await pool.execute('UPDATE bottles SET is_deleted = 1 WHERE id = ?', [bottleId]);
 
     res.json(generateResponse(true, null, '瓶子已删除'));
   } catch (error) {
@@ -587,7 +1010,7 @@ router.post('/soft-delete/:bottleId', async (req, res) => {
     }
 
     const [rows] = await pool.execute(
-      'SELECT sender_id, picker_id FROM bottles WHERE id = ?',
+      'SELECT sender_id, picker_id FROM bottles WHERE id = ? AND is_deleted = 0',
       [bottleId]
     );
 
@@ -596,7 +1019,7 @@ router.post('/soft-delete/:bottleId', async (req, res) => {
     }
 
     if (rows[0].sender_id === userId) {
-      await pool.execute('DELETE FROM bottles WHERE id = ?', [bottleId]);
+      await pool.execute('UPDATE bottles SET is_deleted = 1 WHERE id = ?', [bottleId]);
       return res.json(generateResponse(true, null, '瓶子已删除'));
     }
 

@@ -8,7 +8,10 @@
     "dev": "nodemon app.js",
     "init-db": "node config/initDB.js",
     "migrate-db": "node config/migrateDB.js",
-    "migrate-friends": "node config/migrateFriends.js"
+    "migrate-friends": "node config/migrateFriends.js",
+    "migrate-bottle-features": "node config/migrateBottleAdvancedFeatures.js",
+    "test": "jest --verbose --runInBand",
+    "test:coverage": "jest --coverage --runInBand"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
@@ -19,9 +22,12 @@
     "jsonwebtoken": "^9.0.3",
     "multer": "^2.1.1",
     "mysql2": "^3.6.0",
+    "node-cron": "^4.2.1",
     "uuid": "^9.0.0"
   },
   "devDependencies": {
-    "nodemon": "^3.0.1"
+    "jest": "^30.4.2",
+    "nodemon": "^3.0.1",
+    "supertest": "^7.2.2"
   }
 }

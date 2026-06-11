@@ -9,6 +9,7 @@ const bottleRoutes = require('./routes/bottle');
 const messageRoutes = require('./routes/message');
 const welfareRoutes = require('./routes/welfare');
 const shopRoutes = require('./routes/shop');
+const { startScheduledTasks } = require('./utils/bottleScheduler');
 
 const app = express();
 const PORT = process.env.PORT || 4022;
@@ -51,4 +52,6 @@ app.listen(PORT, () => {
   console.log(`🚀 漂流瓶后端服务已启动`);
   console.log(`📍 服务地址: http://localhost:${PORT}`);
   console.log(`📡 API前缀: http://localhost:${PORT}/api`);
+  
+  startScheduledTasks();
 });
