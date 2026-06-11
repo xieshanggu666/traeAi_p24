@@ -3,7 +3,6 @@
     <div class="wave-bg">
       <div class="water-layer water-layer-1"></div>
       <div class="water-layer water-layer-2"></div>
-      <div class="water-layer water-layer-3"></div>
     </div>
     <div class="content-wrapper">
       <div class="nav-bar">
@@ -35,48 +34,29 @@
       <div class="pick-area" v-if="!bottle && !isPicking && pickRemaining > 0">
         <div class="ocean-container">
           <div class="water-surface">
-            <div class="wave wave-1"></div>
-            <div class="wave wave-2"></div>
-            <div class="wave wave-3"></div>
-          </div>
-          <div class="deep-ocean">
-            <div class="bubble bubble-1"></div>
-            <div class="bubble bubble-2"></div>
-            <div class="bubble bubble-3"></div>
-            <div class="bubble bubble-4"></div>
-            <div class="bubble bubble-5"></div>
+            <div class="wave"></div>
           </div>
           <div class="net-animation">
-            <div class="net" :class="{ 'net-active': isPicking }">
+            <div class="net">
               <span class="net-icon">🥅</span>
-              <div class="net-rope"></div>
             </div>
           </div>
+          <div class="bottle-hint-icon">🍾</div>
         </div>
         <div class="pick-hint">点击下方按钮捞取漂流瓶</div>
       </div>
 
       <div class="picking-animation" v-else-if="isPicking">
         <div class="picking-ocean">
-          <div class="water-ripple"></div>
-          <div class="water-ripple ripple-2"></div>
-          <div class="water-ripple ripple-3"></div>
-          <div class="bottle-emerge" v-if="showBottleEmerging">
-            <div class="emerging-bottle">🍾</div>
-            <div class="water-splash">
-              <div class="splash-drop drop-1"></div>
-              <div class="splash-drop drop-2"></div>
-              <div class="splash-drop drop-3"></div>
-              <div class="splash-drop drop-4"></div>
-              <div class="splash-drop drop-5"></div>
-              <div class="splash-drop drop-6"></div>
-            </div>
+          <div class="water-surface-pick">
+            <div class="wave-pick"></div>
           </div>
-          <div class="net-pulling" :class="{ 'pulling-up': isPullingUp }">
-            <span class="net-icon">🥅</span>
+          <div class="ripple-effect"></div>
+          <div class="bottle-emerge">
+            <div class="emerging-bottle">🍾</div>
           </div>
         </div>
-        <div class="picking-text">{{ pickingText }}</div>
+        <div class="picking-text">正在捞取中...</div>
       </div>
 
       <div class="bottle-detail" v-else-if="bottle && !showReply">
@@ -87,7 +67,7 @@
               <div class="sender-detail">
                 <div class="sender-nickname">{{ bottle.senderNickname }}</div>
                 <div class="sender-meta">
-                  <span v-if="bottle.senderGender" class="gender-tag">{{ bottle.senderGender === 'male' ? '♂ 男' : '♀ 女' }}</span>
+                  <span v-if="bottle.senderGender" class="gender-tag">{{ bottle.senderGender === '男' || bottle.senderGender === 'male' ? '♂ 男' : '♀ 女' }}</span>
                   <span v-if="getSenderAge(bottle.senderBirthday)" class="age-tag">{{ getSenderAge(bottle.senderBirthday) }}岁</span>
                   <span class="bottle-time">{{ formatTime(bottle.createdAt) }}</span>
                 </div>
@@ -358,9 +338,6 @@ const showQuickReply = ref(false);
 const activeQuickCategory = ref(0);
 const showFilter = ref(false);
 const filteredCount = ref(0);
-const isPullingUp = ref(false);
-const showBottleEmerging = ref(false);
-const pickingText = ref('正在捞取中...');
 
 const filters = ref({
   gender: 'all',
@@ -545,22 +522,9 @@ async function pickBottle() {
   }
 
   isPicking.value = true;
-  isPullingUp.value = false;
-  showBottleEmerging.value = false;
   showEmpty.value = false;
-  pickingText.value = '正在捞取中...';
 
   try {
-    setTimeout(() => {
-      isPullingUp.value = true;
-      pickingText.value = '渔网正在收起...';
-    }, 800);
-
-    setTimeout(() => {
-      showBottleEmerging.value = true;
-      pickingText.value = '瓶子浮出水面！';
-    }, 1600);
-
     const result = await apiPickBottle(filters.value);
     bottle.value = result;
     if (result.pickRemaining !== undefined) {
@@ -581,7 +545,7 @@ async function pickBottle() {
   } finally {
     setTimeout(() => {
       isPicking.value = false;
-    }, 600);
+    }, 700);
   }
 }
 
@@ -735,12 +699,12 @@ function goBack() {
 
 .pick-area {
   text-align: center;
-  padding: 30px 0 20px;
+  padding: 20px 0;
 }
 
 .ocean-container {
   position: relative;
-  height: 300px;
+  height: 200px;
   margin-bottom: 20px;
   overflow: hidden;
   border-radius: 20px;
@@ -752,36 +716,28 @@ function goBack() {
   top: 0;
   left: 0;
   right: 0;
+  height: 50px;
+  overflow: hidden;
+}
+
+.water-surface-pick {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
   height: 60px;
   overflow: hidden;
 }
 
-.wave {
+.wave, .wave-pick {
   position: absolute;
   left: -100%;
   right: -100%;
   bottom: 0;
   height: 40px;
-  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1200 120'%3E%3Cpath fill='rgba(255,255,255,0.3)' d='M0,60 C200,100 400,20 600,60 C800,100 1000,20 1200,60 L1200,120 L0,120 Z'/%3E%3C/svg%3E") repeat-x;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1200 120'%3E%3Cpath fill='rgba(255,255,255,0.35)' d='M0,60 C200,100 400,20 600,60 C800,100 1000,20 1200,60 L1200,120 L0,120 Z'/%3E%3C/svg%3E") repeat-x;
   background-size: 600px 60px;
-  animation: waveMove 4s linear infinite;
-}
-
-.wave-1 {
-  opacity: 0.6;
-  animation-duration: 3s;
-}
-
-.wave-2 {
-  opacity: 0.4;
-  animation-duration: 4s;
-  animation-delay: -1s;
-}
-
-.wave-3 {
-  opacity: 0.2;
-  animation-duration: 5s;
-  animation-delay: -2s;
+  animation: waveMove 3s linear infinite;
 }
 
 @keyframes waveMove {
@@ -789,56 +745,16 @@ function goBack() {
   100% { transform: translateX(50%); }
 }
 
-.deep-ocean {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-}
-
-.bubble {
-  position: absolute;
-  background: radial-gradient(circle at 30% 30%, rgba(255,255,255,0.8), rgba(255,255,255,0.1));
-  border-radius: 50%;
-  animation: bubbleRise 4s ease-in-out infinite;
-}
-
-.bubble-1 { width: 8px; height: 8px; left: 20%; bottom: -20px; animation-delay: 0s; }
-.bubble-2 { width: 12px; height: 12px; left: 40%; bottom: -20px; animation-delay: 1s; }
-.bubble-3 { width: 6px; height: 6px; left: 60%; bottom: -20px; animation-delay: 0.5s; }
-.bubble-4 { width: 10px; height: 10px; left: 75%; bottom: -20px; animation-delay: 1.5s; }
-.bubble-5 { width: 14px; height: 14px; left: 85%; bottom: -20px; animation-delay: 2s; }
-
-@keyframes bubbleRise {
-  0% {
-    transform: translateY(0) scale(1);
-    opacity: 0;
-  }
-  10% {
-    opacity: 0.6;
-  }
-  90% {
-    opacity: 0.4;
-  }
-  100% {
-    transform: translateY(-320px) scale(0.5);
-    opacity: 0;
-  }
-}
-
 .net-animation {
   position: absolute;
-  top: 50%;
+  top: 55%;
   left: 50%;
   transform: translate(-50%, -50%);
 }
 
 .net {
-  position: relative;
-  font-size: 100px;
-  animation: netFloat 2s ease-in-out infinite;
-  transition: all 0.5s;
+  font-size: 70px;
+  animation: netFloat 2.5s ease-in-out infinite;
 }
 
 .net-icon {
@@ -846,28 +762,23 @@ function goBack() {
   filter: drop-shadow(0 4px 8px rgba(0,0,0,0.3));
 }
 
-.net-rope {
+.bottle-hint-icon {
   position: absolute;
-  top: -100px;
-  left: 50%;
-  width: 2px;
-  height: 100px;
-  background: linear-gradient(180deg, rgba(139,90,43,0.8), rgba(139,90,43,0.3));
-  transform: translateX(-50%);
+  bottom: 20px;
+  right: 30px;
+  font-size: 40px;
+  opacity: 0.6;
+  animation: bottleFloatHint 3s ease-in-out infinite;
 }
 
-.net.net-active {
-  animation: netSwing 0.8s ease-in-out infinite;
+@keyframes bottleFloatHint {
+  0%, 100% { transform: translateY(0) rotate(-10deg); }
+  50% { transform: translateY(-8px) rotate(10deg); }
 }
 
 @keyframes netFloat {
-  0%, 100% { transform: translateY(0) rotate(-5deg); }
-  50% { transform: translateY(-15px) rotate(5deg); }
-}
-
-@keyframes netSwing {
-  0%, 100% { transform: rotate(-20deg) translateY(10px); }
-  50% { transform: rotate(20deg) translateY(-10px); }
+  0%, 100% { transform: translateY(0) rotate(-3deg); }
+  50% { transform: translateY(-10px) rotate(3deg); }
 }
 
 .pick-hint {
@@ -879,47 +790,39 @@ function goBack() {
 
 .picking-animation {
   text-align: center;
-  padding: 40px 0;
+  padding: 20px 0;
 }
 
 .picking-ocean {
   position: relative;
-  height: 280px;
-  margin-bottom: 30px;
+  height: 200px;
+  margin-bottom: 20px;
   border-radius: 20px;
   background: linear-gradient(180deg, #4FC3F7 0%, #0288D1 60%, #01579B 100%);
   overflow: hidden;
 }
 
-.water-ripple {
+.ripple-effect {
   position: absolute;
   top: 50%;
   left: 50%;
-  width: 20px;
-  height: 20px;
-  border: 2px solid rgba(255,255,255,0.6);
-  border-radius: 50%;
   transform: translate(-50%, -50%);
-  animation: rippleExpand 2s ease-out infinite;
+  width: 30px;
+  height: 30px;
+  border: 2px solid rgba(255,255,255,0.7);
+  border-radius: 50%;
+  animation: rippleExpandQuick 0.7s ease-out infinite;
 }
 
-.ripple-2 {
-  animation-delay: 0.5s;
-}
-
-.ripple-3 {
-  animation-delay: 1s;
-}
-
-@keyframes rippleExpand {
+@keyframes rippleExpandQuick {
   0% {
     width: 20px;
     height: 20px;
     opacity: 1;
   }
   100% {
-    width: 300px;
-    height: 300px;
+    width: 180px;
+    height: 180px;
     opacity: 0;
   }
 }
@@ -929,17 +832,13 @@ function goBack() {
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  animation: bottleEmerge 1.2s ease-out forwards;
+  animation: bottleEmergeQuick 0.7s ease-out forwards;
 }
 
-@keyframes bottleEmerge {
+@keyframes bottleEmergeQuick {
   0% {
-    transform: translate(-50%, 100%) scale(0.5);
+    transform: translate(-50%, 50%) scale(0.4);
     opacity: 0;
-  }
-  60% {
-    transform: translate(-50%, -70%) scale(1.1);
-    opacity: 1;
   }
   100% {
     transform: translate(-50%, -50%) scale(1);
@@ -948,86 +847,16 @@ function goBack() {
 }
 
 .emerging-bottle {
-  font-size: 80px;
-  filter: drop-shadow(0 4px 12px rgba(0,0,0,0.4));
-  animation: bottleBounce 0.5s ease-out 1s;
-}
-
-@keyframes bottleBounce {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-10px); }
-}
-
-.water-splash {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  width: 100px;
-  height: 100px;
-}
-
-.splash-drop {
-  position: absolute;
-  width: 8px;
-  height: 8px;
-  background: rgba(255,255,255,0.8);
-  border-radius: 50%;
-  animation: splashFly 0.8s ease-out 0.2s forwards;
-  opacity: 0;
-}
-
-.drop-1 { left: 50%; top: 0; animation-delay: 0.2s; }
-.drop-2 { left: 80%; top: 20%; animation-delay: 0.3s; }
-.drop-3 { left: 90%; top: 50%; animation-delay: 0.25s; }
-.drop-4 { left: 80%; top: 80%; animation-delay: 0.35s; }
-.drop-5 { left: 20%; top: 80%; animation-delay: 0.28s; }
-.drop-6 { left: 10%; top: 50%; animation-delay: 0.32s; }
-
-@keyframes splashFly {
-  0% {
-    transform: translate(0, 0) scale(1);
-    opacity: 1;
-  }
-  100% {
-    transform: translate(var(--tx, 0), var(--ty, -50px)) scale(0);
-    opacity: 0;
-  }
-}
-
-.splash-drop:nth-child(1) { --tx: 0px; --ty: -60px; }
-.splash-drop:nth-child(2) { --tx: 50px; --ty: -40px; }
-.splash-drop:nth-child(3) { --tx: 60px; --ty: 0px; }
-.splash-drop:nth-child(4) { --tx: 40px; --ty: 50px; }
-.splash-drop:nth-child(5) { --tx: -40px; --ty: 50px; }
-.splash-drop:nth-child(6) { --tx: -60px; --ty: 0px; }
-
-.net-pulling {
-  position: absolute;
-  top: 20%;
-  left: 50%;
-  transform: translate(-50%, 0);
-  font-size: 80px;
-  transition: all 0.8s ease-out;
-  opacity: 0.8;
-}
-
-.net-pulling.pulling-up {
-  top: 5%;
-  opacity: 0.4;
+  font-size: 70px;
+  filter: drop-shadow(0 4px 10px rgba(0,0,0,0.4));
 }
 
 .picking-text {
   color: #fff;
-  font-size: 18px;
-  margin-top: 20px;
+  font-size: 16px;
+  margin-top: 10px;
   text-shadow: 0 2px 4px rgba(0,0,0,0.2);
-  animation: pulse 1.5s ease-in-out infinite;
-}
-
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.7; }
+  opacity: 0.9;
 }
 
 .bottle-card {
@@ -1521,37 +1350,19 @@ function goBack() {
 }
 
 .water-layer-2 {
-  height: 60%;
-  background: linear-gradient(180deg, transparent 0%, rgba(41,182,246,0.5) 100%);
-  animation: waterShift 6s ease-in-out infinite;
-}
-
-.water-layer-3 {
-  height: 40%;
-  background: linear-gradient(180deg, transparent 0%, rgba(1,87,155,0.3) 100%);
-  animation: waterShift 8s ease-in-out infinite reverse;
+  height: 50%;
+  background: linear-gradient(180deg, transparent 0%, rgba(41,182,246,0.4) 100%);
 }
 
 .water-layer::before {
   content: '';
   position: absolute;
-  top: -30px;
+  top: -25px;
   left: 0;
   right: 0;
-  height: 60px;
+  height: 50px;
   background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1200 120'%3E%3Cpath fill='%234FC3F7' d='M0,60 C200,100 400,20 600,60 C800,100 1000,20 1200,60 L1200,120 L0,120 Z'/%3E%3C/svg%3E") repeat-x;
   background-size: 600px 60px;
-}
-
-.water-layer-2::before {
-  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1200 120'%3E%3Cpath fill='rgba(41,182,246,0.5)' d='M0,60 C200,20 400,100 600,60 C800,20 1000,100 1200,60 L1200,120 L0,120 Z'/%3E%3C/svg%3E") repeat-x;
-  background-size: 800px 60px;
-  opacity: 0.5;
-}
-
-@keyframes waterShift {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-10px); }
 }
 
 .content-wrapper {

@@ -3,7 +3,6 @@
     <div class="wave-bg">
       <div class="water-layer water-layer-1"></div>
       <div class="water-layer water-layer-2"></div>
-      <div class="water-layer water-layer-3"></div>
     </div>
     <div class="content-wrapper">
       <div class="nav-bar">
@@ -14,56 +13,22 @@
         </div>
       </div>
 
-      <div class="throw-animation-container" v-if="!showSuccess">
+      <div class="throw-animation-container">
         <div class="ocean-scene">
           <div class="water-surface-throw">
-            <div class="wave-throw wave-1-throw"></div>
-            <div class="wave-throw wave-2-throw"></div>
-            <div class="wave-throw wave-3-throw"></div>
+            <div class="wave-throw"></div>
           </div>
-          <div class="deep-ocean-throw">
-            <div class="bubble-throw bubble-1-throw"></div>
-            <div class="bubble-throw bubble-2-throw"></div>
-            <div class="bubble-throw bubble-3-throw"></div>
+          <div class="bottle-display" :class="{ 'bottle-throwing': isThrowing, 'bottle-sinked': showSuccess }">
+            <span class="bottle-emoji">{{ isThrowing ? '🍾' : showSuccess ? '🌊' : '🍾' }}</span>
           </div>
-          <div class="bottle-write-area" :class="{ shaking: isWriting }">
-            <div class="bottle-write" :class="{ 'bottle-ready': canThrow }">
-              <span class="bottle-icon">{{ isThrowing ? '🍾' : '📝' }}</span>
-            </div>
+          <div class="splash-effect" v-if="showSplash">
+            <div class="splash-main"></div>
+            <div class="splash-dot d1"></div>
+            <div class="splash-dot d2"></div>
+            <div class="splash-dot d3"></div>
+            <div class="splash-dot d4"></div>
           </div>
         </div>
-      </div>
-
-      <div class="throw-success-container" v-else>
-        <div class="success-ocean">
-          <div class="throw-trajectory" v-if="showTrajectory">
-            <div class="trajectory-dot" v-for="i in 8" :key="i" :style="{ animationDelay: (i * 0.08) + 's' }"></div>
-          </div>
-          <div class="bottle-fly-wrapper" v-if="showBottleFly">
-            <div class="bottle-fly-throw">🍾</div>
-          </div>
-          <div class="water-splash-throw" v-if="showSplash">
-            <div class="splash-ring ring-1"></div>
-            <div class="splash-ring ring-2"></div>
-            <div class="splash-ring ring-3"></div>
-            <div class="splash-drop-throw drop-1-throw"></div>
-            <div class="splash-drop-throw drop-2-throw"></div>
-            <div class="splash-drop-throw drop-3-throw"></div>
-            <div class="splash-drop-throw drop-4-throw"></div>
-            <div class="splash-drop-throw drop-5-throw"></div>
-            <div class="splash-drop-throw drop-6-throw"></div>
-            <div class="splash-drop-throw drop-7-throw"></div>
-            <div class="splash-drop-throw drop-8-throw"></div>
-          </div>
-          <div class="bottle-sink" v-if="showSink">
-            <span class="sinking-bottle">🍾</span>
-          </div>
-          <div class="water-surface-success">
-            <div class="wave-throw wave-1-throw"></div>
-            <div class="wave-throw wave-2-throw"></div>
-          </div>
-        </div>
-        <div class="success-text">{{ successMessage }}</div>
       </div>
 
       <div class="limit-warning" v-if="throwRemaining <= 0 && !showSuccess">
@@ -82,7 +47,6 @@
           placeholder="在这里写下你的心情、故事或者想说的话..."
           maxlength="500"
           :disabled="isThrowing || throwRemaining <= 0"
-          @input="onInput"
         ></textarea>
         <div class="char-count">{{ content.length }}/500</div>
 
@@ -118,13 +82,18 @@
         <div class="throw-tip" v-if="throwRemaining > 0">今日还可扔 {{ throwRemaining }} 次</div>
       </div>
 
-      <div class="success-actions" v-else>
-        <van-button type="primary" block class="success-btn" @click="throwAgain" :disabled="throwRemaining <= 0">
-          再扔一个
-        </van-button>
-        <van-button plain block style="margin-top: 12px;" class="back-btn" @click="goBack">
-          返回首页
-        </van-button>
+      <div class="success-card" v-else>
+        <div class="success-icon">🌊</div>
+        <div class="success-title">瓶子已成功扔出！</div>
+        <div class="success-desc">等待有缘人捞起你的瓶子~</div>
+        <div class="success-actions">
+          <van-button type="primary" block class="success-btn" @click="throwAgain" :disabled="throwRemaining <= 0">
+            再扔一个
+          </van-button>
+          <van-button plain block style="margin-top: 12px;" class="back-btn" @click="goBack">
+            返回首页
+          </van-button>
+        </div>
       </div>
     </div>
   </div>
@@ -139,15 +108,9 @@ import { throwBottle as apiThrowBottle, getDailyLimits } from '../api';
 const router = useRouter();
 const content = ref('');
 const isThrowing = ref(false);
-const isWriting = ref(false);
 const showSuccess = ref(false);
-const throwRemaining = ref(20);
-const throwLimit = ref(20);
-const showTrajectory = ref(false);
-const showBottleFly = ref(false);
 const showSplash = ref(false);
-const showSink = ref(false);
-const successMessage = ref('');
+const throwRemaining = ref(20);
 
 const quickMessages = [
   '今天心情很好！',
@@ -170,17 +133,9 @@ async function fetchDailyLimits() {
   try {
     const result = await getDailyLimits();
     throwRemaining.value = result.throwRemaining;
-    throwLimit.value = result.throwLimit;
   } catch (error) {
     console.error('获取每日限制失败:', error);
   }
-}
-
-function onInput() {
-  isWriting.value = true;
-  setTimeout(() => {
-    isWriting.value = false;
-  }, 300);
 }
 
 function useQuickMessage(msg) {
@@ -198,31 +153,13 @@ async function throwBottle() {
   }
 
   isThrowing.value = true;
-  showTrajectory.value = false;
-  showBottleFly.value = false;
+  showSuccess.value = false;
   showSplash.value = false;
-  showSink.value = false;
-  successMessage.value = '用力投掷中...';
 
   try {
     setTimeout(() => {
-      showTrajectory.value = true;
-      successMessage.value = '瓶子正在飞向大海...';
-    }, 300);
-
-    setTimeout(() => {
-      showBottleFly.value = true;
-    }, 500);
-
-    setTimeout(() => {
       showSplash.value = true;
-      successMessage.value = '扑通！落入水中';
-    }, 1200);
-
-    setTimeout(() => {
-      showSink.value = true;
-      successMessage.value = '瓶子已沉入大海，等待有缘人...';
-    }, 1800);
+    }, 350);
 
     const result = await apiThrowBottle(content.value);
     showToast(result._message || '操作成功');
@@ -234,18 +171,16 @@ async function throwBottle() {
     
     setTimeout(() => {
       showSuccess.value = true;
-    }, 2200);
+      isThrowing.value = false;
+    }, 700);
   } catch (error) {
+    isThrowing.value = false;
     if (error.httpMessage && error.httpMessage.includes('上限')) {
       throwRemaining.value = 0;
       showToast(error.httpMessage);
     } else {
       showToast(error.businessMessage || error.httpMessage || '出现异常');
     }
-  } finally {
-    setTimeout(() => {
-      isThrowing.value = false;
-    }, 2200);
   }
 }
 
@@ -256,10 +191,7 @@ function throwAgain() {
   }
   content.value = '';
   showSuccess.value = false;
-  showTrajectory.value = false;
-  showBottleFly.value = false;
   showSplash.value = false;
-  showSink.value = false;
 }
 
 function goBack() {
@@ -311,10 +243,10 @@ function goBack() {
 
 .ocean-scene {
   position: relative;
-  height: 200px;
+  height: 160px;
   border-radius: 20px;
   overflow: hidden;
-  background: linear-gradient(180deg, #87CEEB 0%, #4FC3F7 40%, #0288D1 100%);
+  background: linear-gradient(180deg, #87CEEB 0%, #4FC3F7 50%, #0288D1 100%);
 }
 
 .water-surface-throw {
@@ -322,7 +254,7 @@ function goBack() {
   bottom: 0;
   left: 0;
   right: 0;
-  height: 80px;
+  height: 60px;
   overflow: hidden;
 }
 
@@ -331,303 +263,124 @@ function goBack() {
   left: -100%;
   right: -100%;
   bottom: 0;
-  height: 60px;
-  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1200 120'%3E%3Cpath fill='rgba(255,255,255,0.3)' d='M0,60 C200,100 400,20 600,60 C800,100 1000,20 1200,60 L1200,120 L0,120 Z'/%3E%3C/svg%3E") repeat-x;
+  height: 50px;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1200 120'%3E%3Cpath fill='rgba(255,255,255,0.4)' d='M0,60 C200,100 400,20 600,60 C800,100 1000,20 1200,60 L1200,120 L0,120 Z'/%3E%3C/svg%3E") repeat-x;
   background-size: 600px 60px;
-  animation: waveMove 4s linear infinite;
+  animation: waveMove 3s linear infinite;
 }
-
-.wave-1-throw { opacity: 0.6; animation-duration: 3s; }
-.wave-2-throw { opacity: 0.4; animation-duration: 4s; animation-delay: -1s; }
-.wave-3-throw { opacity: 0.2; animation-duration: 5s; animation-delay: -2s; }
 
 @keyframes waveMove {
   0% { transform: translateX(0); }
   100% { transform: translateX(50%); }
 }
 
-.deep-ocean-throw {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-}
-
-.bubble-throw {
-  position: absolute;
-  background: radial-gradient(circle at 30% 30%, rgba(255,255,255,0.8), rgba(255,255,255,0.1));
-  border-radius: 50%;
-  animation: bubbleRise 4s ease-in-out infinite;
-}
-
-.bubble-1-throw { width: 6px; height: 6px; left: 15%; bottom: -20px; animation-delay: 0s; }
-.bubble-2-throw { width: 10px; height: 10px; left: 50%; bottom: -20px; animation-delay: 1s; }
-.bubble-3-throw { width: 8px; height: 8px; left: 80%; bottom: -20px; animation-delay: 0.5s; }
-
-@keyframes bubbleRise {
-  0% { transform: translateY(0) scale(1); opacity: 0; }
-  10% { opacity: 0.6; }
-  90% { opacity: 0.4; }
-  100% { transform: translateY(-220px) scale(0.5); opacity: 0; }
-}
-
-.bottle-write-area {
+.bottle-display {
   position: absolute;
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
+  transition: all 0.6s cubic-bezier(0.25, 0.46, 0.45, 0.94);
 }
 
-.bottle-write {
-  font-size: 80px;
-  animation: float 3s ease-in-out infinite;
-  transition: all 0.3s;
-  filter: drop-shadow(0 4px 12px rgba(0,0,0,0.3));
-}
-
-.bottle-write.bottle-ready {
-  filter: drop-shadow(0 4px 16px rgba(102, 126, 234, 0.6));
-  transform: scale(1.05);
-}
-
-.bottle-write.shaking {
-  animation: shake 0.3s ease-in-out;
-}
-
-@keyframes float {
-  0%, 100% { transform: translateY(0) rotate(-5deg); }
-  50% { transform: translateY(-10px) rotate(5deg); }
-}
-
-@keyframes shake {
-  0%, 100% { transform: rotate(0deg); }
-  25% { transform: rotate(-10deg); }
-  75% { transform: rotate(10deg); }
-}
-
-.throw-success-container {
-  margin: 20px 0;
-}
-
-.success-ocean {
-  position: relative;
-  height: 250px;
-  border-radius: 20px;
-  overflow: hidden;
-  background: linear-gradient(180deg, #87CEEB 0%, #4FC3F7 50%, #0288D1 100%);
-}
-
-.throw-trajectory {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  pointer-events: none;
-}
-
-.trajectory-dot {
-  position: absolute;
-  width: 6px;
-  height: 6px;
-  background: rgba(255,255,255,0.6);
-  border-radius: 50%;
-  opacity: 0;
-  animation: trajectoryFade 0.5s ease-out forwards;
-}
-
-.trajectory-dot:nth-child(1) { top: 80%; left: 10%; }
-.trajectory-dot:nth-child(2) { top: 65%; left: 18%; }
-.trajectory-dot:nth-child(3) { top: 50%; left: 28%; }
-.trajectory-dot:nth-child(4) { top: 40%; left: 40%; }
-.trajectory-dot:nth-child(5) { top: 35%; left: 52%; }
-.trajectory-dot:nth-child(6) { top: 40%; left: 64%; }
-.trajectory-dot:nth-child(7) { top: 52%; left: 76%; }
-.trajectory-dot:nth-child(8) { top: 70%; left: 86%; }
-
-@keyframes trajectoryFade {
-  0% { opacity: 0; transform: scale(0.5); }
-  50% { opacity: 1; transform: scale(1.2); }
-  100% { opacity: 0; transform: scale(0.8); }
-}
-
-.bottle-fly-wrapper {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  pointer-events: none;
-}
-
-.bottle-fly-throw {
-  position: absolute;
-  font-size: 50px;
-  top: 70%;
-  left: 5%;
-  animation: bottleFly 1.2s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
+.bottle-emoji {
+  font-size: 60px;
+  display: block;
   filter: drop-shadow(0 4px 8px rgba(0,0,0,0.3));
 }
 
-@keyframes bottleFly {
+.bottle-display.bottle-throwing {
+  animation: bottleThrow 0.7s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
+}
+
+@keyframes bottleThrow {
   0% {
-    top: 75%;
-    left: 5%;
-    transform: rotate(0deg) scale(1);
-  }
-  25% {
-    top: 35%;
-    left: 25%;
-    transform: rotate(90deg) scale(1.1);
+    top: 50%;
+    left: 20%;
+    transform: translate(-50%, -50%) rotate(0deg) scale(1);
   }
   50% {
-    top: 25%;
-    left: 50%;
-    transform: rotate(180deg) scale(1);
-  }
-  75% {
-    top: 45%;
-    left: 75%;
-    transform: rotate(270deg) scale(0.9);
+    top: 20%;
+    left: 60%;
+    transform: translate(-50%, -50%) rotate(180deg) scale(1.1);
   }
   100% {
     top: 65%;
-    left: 90%;
-    transform: rotate(360deg) scale(0.8);
+    left: 85%;
+    transform: translate(-50%, -50%) rotate(360deg) scale(0.7);
     opacity: 0.8;
   }
 }
 
-.water-splash-throw {
+.bottle-display.bottle-sinked {
+  opacity: 0;
+  transform: translate(-50%, 100%) scale(0.5);
+}
+
+.splash-effect {
   position: absolute;
   top: 60%;
   left: 85%;
   transform: translate(-50%, -50%);
-  width: 120px;
-  height: 120px;
+  width: 80px;
+  height: 80px;
+  animation: splashShow 0.5s ease-out forwards;
 }
 
-.splash-ring {
+@keyframes splashShow {
+  0% { opacity: 1; transform: translate(-50%, -50%) scale(0.5); }
+  100% { opacity: 0; transform: translate(-50%, -50%) scale(1.5); }
+}
+
+.splash-main {
   position: absolute;
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  border: 3px solid rgba(255,255,255,0.7);
+  width: 20px;
+  height: 20px;
+  border: 3px solid rgba(255,255,255,0.8);
   border-radius: 50%;
-  animation: splashRingExpand 1s ease-out forwards;
-  opacity: 0;
+  animation: splashRing 0.4s ease-out forwards;
 }
 
-.ring-1 { animation-delay: 0s; }
-.ring-2 { animation-delay: 0.2s; }
-.ring-3 { animation-delay: 0.4s; }
-
-@keyframes splashRingExpand {
-  0% {
-    width: 10px;
-    height: 10px;
-    opacity: 1;
-  }
-  100% {
-    width: 150px;
-    height: 150px;
-    opacity: 0;
-  }
+@keyframes splashRing {
+  0% { width: 10px; height: 10px; opacity: 1; }
+  100% { width: 80px; height: 80px; opacity: 0; }
 }
 
-.splash-drop-throw {
+.splash-dot {
   position: absolute;
-  width: 10px;
-  height: 10px;
-  background: radial-gradient(circle at 30% 30%, rgba(255,255,255,0.9), rgba(79,195,247,0.3));
+  top: 50%;
+  left: 50%;
+  width: 8px;
+  height: 8px;
+  background: rgba(255,255,255,0.9);
   border-radius: 50%;
-  animation: splashDrop 0.8s ease-out forwards;
-  opacity: 0;
+  animation: splashDot 0.4s ease-out forwards;
 }
 
-.drop-1-throw { left: 50%; top: 50%; animation-delay: 0.1s; }
-.drop-2-throw { left: 50%; top: 50%; animation-delay: 0.15s; }
-.drop-3-throw { left: 50%; top: 50%; animation-delay: 0.2s; }
-.drop-4-throw { left: 50%; top: 50%; animation-delay: 0.25s; }
-.drop-5-throw { left: 50%; top: 50%; animation-delay: 0.3s; }
-.drop-6-throw { left: 50%; top: 50%; animation-delay: 0.35s; }
-.drop-7-throw { left: 50%; top: 50%; animation-delay: 0.4s; }
-.drop-8-throw { left: 50%; top: 50%; animation-delay: 0.45s; }
+.splash-dot.d1 { animation-delay: 0.05s; transform: translate(0, 0); }
+.splash-dot.d2 { animation-delay: 0.08s; transform: translate(0, 0); }
+.splash-dot.d3 { animation-delay: 0.1s; transform: translate(0, 0); }
+.splash-dot.d4 { animation-delay: 0.12s; transform: translate(0, 0); }
 
-@keyframes splashDrop {
-  0% {
-    transform: translate(0, 0) scale(1);
-    opacity: 1;
-  }
-  100% {
-    transform: translate(var(--tx, 0), var(--ty, 0)) scale(0);
-    opacity: 0;
-  }
+@keyframes splashDot {
+  0% { transform: translate(0, 0) scale(1); opacity: 1; }
+  100% { opacity: 0; }
 }
 
-.splash-drop-throw:nth-child(4) { --tx: 40px; --ty: -60px; }
-.splash-drop-throw:nth-child(5) { --tx: -50px; --ty: -50px; }
-.splash-drop-throw:nth-child(6) { --tx: 60px; --ty: -20px; }
-.splash-drop-throw:nth-child(7) { --tx: -60px; --ty: -30px; }
-.splash-drop-throw:nth-child(8) { --tx: 30px; --ty: -70px; }
-.splash-drop-throw:nth-child(9) { --tx: -40px; --ty: -60px; }
-.splash-drop-throw:nth-child(10) { --tx: 70px; --ty: -40px; }
-.splash-drop-throw:nth-child(11) { --tx: -70px; --ty: -20px; }
+.splash-dot.d1 { --tx: 25px; --ty: -35px; }
+.splash-dot.d2 { --tx: -30px; --ty: -25px; }
+.splash-dot.d3 { --tx: 35px; --ty: -15px; }
+.splash-dot.d4 { --tx: -25px; --ty: -30px; }
 
-.bottle-sink {
-  position: absolute;
-  top: 60%;
-  left: 85%;
-  transform: translate(-50%, -50%);
+.splash-dot {
+  animation-name: splashDotMove;
 }
 
-.sinking-bottle {
-  font-size: 40px;
-  animation: bottleSink 1.5s ease-in forwards;
-  filter: drop-shadow(0 4px 8px rgba(0,0,0,0.3));
-}
-
-@keyframes bottleSink {
-  0% {
-    transform: translateY(0) rotate(0deg);
-    opacity: 1;
-  }
-  30% {
-    transform: translateY(20px) rotate(15deg);
-    opacity: 0.8;
-  }
-  60% {
-    transform: translateY(60px) rotate(-10deg);
-    opacity: 0.5;
-  }
-  100% {
-    transform: translateY(120px) rotate(5deg);
-    opacity: 0;
-  }
-}
-
-.water-surface-success {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  height: 100px;
-  overflow: hidden;
-}
-
-.success-text {
-  color: #fff;
-  font-size: 18px;
-  margin-top: 20px;
-  text-align: center;
-  text-shadow: 0 2px 4px rgba(0,0,0,0.2);
-  animation: pulse 1.5s ease-in-out infinite;
-}
-
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.8; }
+@keyframes splashDotMove {
+  0% { transform: translate(0, 0) scale(1); opacity: 1; }
+  100% { transform: translate(var(--tx), var(--ty)) scale(0); opacity: 0; }
 }
 
 .input-card {
@@ -657,7 +410,7 @@ function goBack() {
 
 .bottle-input {
   width: 100%;
-  min-height: 150px;
+  min-height: 120px;
   border: 2px solid #eee;
   border-radius: 12px;
   padding: 15px;
@@ -687,7 +440,7 @@ function goBack() {
 }
 
 .quick-messages {
-  margin: 20px 0;
+  margin: 16px 0;
 }
 
 .quick-messages-label {
@@ -702,17 +455,17 @@ function goBack() {
 .quick-tags {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
+  gap: 8px;
 }
 
 .quick-tag {
-  padding: 8px 14px;
+  padding: 7px 12px;
   background: #f0f7ff;
   color: #1989fa;
-  border-radius: 20px;
-  font-size: 13px;
+  border-radius: 16px;
+  font-size: 12px;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all 0.15s;
 }
 
 .quick-tag:active {
@@ -739,20 +492,43 @@ function goBack() {
   opacity: 0.8;
 }
 
-.success-actions {
-  margin-top: 40px;
+.success-card {
+  background: rgba(255, 255, 255, 0.95);
+  border-radius: 16px;
+  padding: 40px 20px;
+  margin-top: 20px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+  text-align: center;
+}
+
+.success-icon {
+  font-size: 60px;
+  margin-bottom: 16px;
+}
+
+.success-title {
+  font-size: 20px;
+  font-weight: bold;
+  color: #333;
+  margin-bottom: 8px;
+}
+
+.success-desc {
+  font-size: 14px;
+  color: #666;
+  margin-bottom: 24px;
 }
 
 .success-btn {
   border-radius: 12px;
-  height: 50px;
+  height: 48px;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   border: none;
 }
 
 .back-btn {
   border-radius: 12px;
-  height: 50px;
+  height: 48px;
   color: #667eea;
   border-color: #667eea;
 }
@@ -780,37 +556,25 @@ function goBack() {
 }
 
 .water-layer-2 {
-  height: 60%;
-  background: linear-gradient(180deg, transparent 0%, rgba(41,182,246,0.5) 100%);
+  height: 50%;
+  background: linear-gradient(180deg, transparent 0%, rgba(41,182,246,0.4) 100%);
   animation: waterShift 6s ease-in-out infinite;
-}
-
-.water-layer-3 {
-  height: 40%;
-  background: linear-gradient(180deg, transparent 0%, rgba(1,87,155,0.3) 100%);
-  animation: waterShift 8s ease-in-out infinite reverse;
 }
 
 .water-layer::before {
   content: '';
   position: absolute;
-  top: -30px;
+  top: -25px;
   left: 0;
   right: 0;
-  height: 60px;
+  height: 50px;
   background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1200 120'%3E%3Cpath fill='%234FC3F7' d='M0,60 C200,100 400,20 600,60 C800,100 1000,20 1200,60 L1200,120 L0,120 Z'/%3E%3C/svg%3E") repeat-x;
   background-size: 600px 60px;
 }
 
-.water-layer-2::before {
-  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1200 120'%3E%3Cpath fill='rgba(41,182,246,0.5)' d='M0,60 C200,20 400,100 600,60 C800,20 1000,100 1200,60 L1200,120 L0,120 Z'/%3E%3C/svg%3E") repeat-x;
-  background-size: 800px 60px;
-  opacity: 0.5;
-}
-
 @keyframes waterShift {
   0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-10px); }
+  50% { transform: translateY(-8px); }
 }
 
 .content-wrapper {

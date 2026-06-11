@@ -100,23 +100,35 @@ function buildFilterQuery(filters, pickerId, isCount = false) {
 
   if (filters) {
     if (filters.gender && filters.gender !== 'all') {
+      const genderMap = {
+        'male': '男',
+        'female': '女',
+        '男': '男',
+        '女': '女'
+      };
+      const genderValue = genderMap[filters.gender] || filters.gender;
       conditions.push('u.gender = ?');
-      params.push(filters.gender);
+      params.push(genderValue);
     }
 
-    if (filters.minAge !== undefined && filters.minAge !== null) {
-      const minBirthday = new Date();
-      minBirthday.setFullYear(minBirthday.getFullYear() - filters.minAge);
-      conditions.push('u.birthday <= ?');
-      params.push(minBirthday.toISOString().split('T')[0]);
-    }
+    const hasAgeFilter = (filters.minAge !== undefined && filters.minAge !== null && filters.minAge !== 18) ||
+                       (filters.maxAge !== undefined && filters.maxAge !== null && filters.maxAge !== 60);
 
-    if (filters.maxAge !== undefined && filters.maxAge !== null) {
-      const maxBirthday = new Date();
-      maxBirthday.setFullYear(maxBirthday.getFullYear() - filters.maxAge - 1);
-      maxBirthday.setDate(maxBirthday.getDate() + 1);
-      conditions.push('u.birthday >= ?');
-      params.push(maxBirthday.toISOString().split('T')[0]);
+    if (hasAgeFilter) {
+      if (filters.minAge !== undefined && filters.minAge !== null) {
+        const minBirthday = new Date();
+        minBirthday.setFullYear(minBirthday.getFullYear() - filters.minAge);
+        conditions.push('u.birthday IS NOT NULL AND u.birthday <= ?');
+        params.push(minBirthday.toISOString().split('T')[0]);
+      }
+
+      if (filters.maxAge !== undefined && filters.maxAge !== null) {
+        const maxBirthday = new Date();
+        maxBirthday.setFullYear(maxBirthday.getFullYear() - filters.maxAge - 1);
+        maxBirthday.setDate(maxBirthday.getDate() + 1);
+        conditions.push('u.birthday IS NOT NULL AND u.birthday >= ?');
+        params.push(maxBirthday.toISOString().split('T')[0]);
+      }
     }
 
     if (filters.timeRange && filters.timeRange !== 'all') {
