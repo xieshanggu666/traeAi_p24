@@ -26,7 +26,7 @@
                     <div class="msg-bottom-row">
                       <span class="msg-preview">
                         <span v-if="bottle.latest_sender_id === currentUserId" class="prefix-self">我: </span>
-                        {{ bottle.latest_message || bottle.content }}
+                        {{ formatLatestMessage(bottle.latest_message || bottle.content) }}
                       </span>
                       <span class="msg-unread" v-if="bottle.unread_count > 0 && bottle.latest_sender_id !== currentUserId">
                         {{ bottle.unread_count > 99 ? '99+' : bottle.unread_count }}
@@ -258,6 +258,22 @@ function formatTime(time) {
   if (diff < 86400000) return `${Math.floor(diff / 3600000)}小时前`;
   if (diff < 172800000) return '昨天';
   return `${Math.floor(diff / 86400000)}天前`;
+}
+
+function formatLatestMessage(content) {
+  if (!content || typeof content !== 'string') return content || '';
+  const trimmed = content.trim();
+  if (trimmed.startsWith('{')) {
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (parsed && parsed.type === 'gift') {
+        return `[礼物] ${parsed.giftName || '礼物'}`;
+      }
+    } catch {
+      // not json, fall through
+    }
+  }
+  return content;
 }
 
 function goToChat(bottle) {

@@ -28,7 +28,7 @@
         />
       </van-tabs>
 
-      <div class="product-list">
+      <div class="product-list" v-if="!loading">
         <div
           v-for="product in filteredProducts"
           :key="product.key"
@@ -58,6 +58,10 @@
             {{ product.canBuy ? '购买' : '已售罄' }}
           </van-button>
         </div>
+      </div>
+
+      <div class="loading-state" v-if="loading">
+        <van-loading color="#667eea" size="24px">加载中...</van-loading>
       </div>
 
       <div class="empty-state" v-if="filteredProducts.length === 0 && !loading">
@@ -315,6 +319,15 @@ function goToBackpack() { router.push('/backpack'); }
   background: #f5f5f5;
   padding: 1px 8px;
   border-radius: 8px;
+}
+
+.loading-state {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 60px 20px;
+  color: #999;
+  font-size: 14px;
 }
 
 .empty-state {
