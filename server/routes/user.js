@@ -396,6 +396,11 @@ router.post('/friend/request', authenticateToken, async (req, res) => {
       return res.json(generateResponse(true, null, '对方也申请添加你为好友，已自动成为好友'));
     }
 
+    await pool.execute(
+      'DELETE FROM friend_requests WHERE sender_id = ? AND receiver_id = ?',
+      [senderId, receiverId]
+    );
+
     const requestId = generateUUID();
     await pool.execute(
       'INSERT INTO friend_requests (id, sender_id, receiver_id, message) VALUES (?, ?, ?, ?)',
@@ -560,6 +565,11 @@ router.delete('/friend/:friendId', authenticateToken, async (req, res) => {
       await conn.execute(
         'DELETE FROM friends WHERE user_id = ? AND friend_id = ?',
         [friendId, userId]
+      );
+
+      await conn.execute(
+        'DELETE FROM friend_requests WHERE (sender_id = ? AND receiver_id = ?) OR (sender_id = ? AND receiver_id = ?)',
+        [userId, friendId, friendId, userId]
       );
 
       await conn.commit();

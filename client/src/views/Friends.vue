@@ -48,60 +48,61 @@
 
       <van-tab :title="pendingRequestsCount > 0 ? `申请 (${pendingRequestsCount})` : '申请'">
         <div class="requests-section">
-          <div class="requests-title" v-if="receivedRequests.length > 0">
-            <span>收到的申请</span>
-          </div>
-          <div class="section-list" v-if="receivedRequests.length > 0">
-            <div class="request-card" v-for="req in receivedRequests" :key="req.id">
-              <div class="friend-avatar">
-                <AvatarDisplay :avatar="req.avatar" :size="46" />
-              </div>
-              <div class="friend-body">
-                <div class="friend-top-row">
-                  <span class="friend-name">{{ req.nickname }}</span>
-                  <span class="request-status" :class="'status-' + req.status">
-                    {{ getRequestStatusText(req.status) }}
-                  </span>
+          <template v-if="receivedRequests.length > 0 || sentRequests.length > 0">
+            <div class="requests-title" v-if="receivedRequests.length > 0">
+              <span>收到的申请</span>
+            </div>
+            <div class="section-list" v-if="receivedRequests.length > 0">
+              <div class="request-card" v-for="req in receivedRequests" :key="req.id">
+                <div class="friend-avatar">
+                  <AvatarDisplay :avatar="req.avatar" :size="46" />
                 </div>
-                <div class="friend-bottom-row">
-                  <span class="request-message" v-if="req.message">{{ req.message }}</span>
-                  <span class="request-no-message" v-else>想添加你为好友</span>
+                <div class="friend-body">
+                  <div class="friend-top-row">
+                    <span class="friend-name">{{ req.nickname }}</span>
+                    <span class="request-status" :class="'status-' + req.status">
+                      {{ getRequestStatusText(req.status) }}
+                    </span>
+                  </div>
+                  <div class="friend-bottom-row">
+                    <span class="request-message" v-if="req.message">{{ req.message }}</span>
+                    <span class="request-no-message" v-else>想添加你为好友</span>
+                  </div>
                 </div>
-              </div>
-              <div class="request-actions" v-if="req.status === 'pending'">
-                <van-button size="small" type="primary" @click="handleAccept(req)">接受</van-button>
-                <van-button size="small" plain @click="handleReject(req)">拒绝</van-button>
+                <div class="request-actions" v-if="req.status === 'pending'">
+                  <van-button size="small" type="primary" @click="handleAccept(req)">接受</van-button>
+                  <van-button size="small" plain @click="handleReject(req)">拒绝</van-button>
+                </div>
               </div>
             </div>
-          </div>
-          <div class="empty-sub-state" v-if="receivedRequests.length === 0">
-            <div class="empty-sub-text">暂无收到的申请</div>
-          </div>
 
-          <div class="requests-title" v-if="sentRequests.length > 0">
-            <span>发出的申请</span>
-          </div>
-          <div class="section-list" v-if="sentRequests.length > 0">
-            <div class="request-card" v-for="req in sentRequests" :key="req.id">
-              <div class="friend-avatar">
-                <AvatarDisplay :avatar="req.avatar" :size="46" />
-              </div>
-              <div class="friend-body">
-                <div class="friend-top-row">
-                  <span class="friend-name">{{ req.nickname }}</span>
-                  <span class="request-status" :class="'status-' + req.status">
-                    {{ getRequestStatusText(req.status) }}
-                  </span>
+            <div class="requests-title" v-if="sentRequests.length > 0">
+              <span>发出的申请</span>
+            </div>
+            <div class="section-list" v-if="sentRequests.length > 0">
+              <div class="request-card" v-for="req in sentRequests" :key="req.id">
+                <div class="friend-avatar">
+                  <AvatarDisplay :avatar="req.avatar" :size="46" />
                 </div>
-                <div class="friend-bottom-row">
-                  <span class="request-message" v-if="req.message">{{ req.message }}</span>
-                  <span class="request-no-message" v-else>申请添加好友</span>
+                <div class="friend-body">
+                  <div class="friend-top-row">
+                    <span class="friend-name">{{ req.nickname }}</span>
+                    <span class="request-status" :class="'status-' + req.status">
+                      {{ getRequestStatusText(req.status) }}
+                    </span>
+                  </div>
+                  <div class="friend-bottom-row">
+                    <span class="request-message" v-if="req.message">{{ req.message }}</span>
+                    <span class="request-no-message" v-else>申请添加好友</span>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
-          <div class="empty-sub-state" v-if="sentRequests.length === 0 && receivedRequests.length === 0">
-            <div class="empty-sub-text">暂无发出的申请</div>
+          </template>
+          <div class="empty-state" v-else>
+            <div class="empty-icon">📨</div>
+            <div class="empty-text">暂无好友申请</div>
+            <div class="empty-desc">搜索用户ID添加好友吧</div>
           </div>
         </div>
       </van-tab>
