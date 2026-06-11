@@ -1,9 +1,36 @@
 const express = require('express');
 const router = express.Router();
+const multer = require('multer');
+const path = require('path');
 const pool = require('../config/db');
 const { generateUUID, generateResponse } = require('../utils/helper');
 
 const DAILY_LIMIT = 20;
+
+const VALID_TAGS = ['情绪倾诉', '交友', '求助', '树洞', '闲聊', '考研搭子', '游戏组队'];
+
+const bottleStorage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, path.join(__dirname, '..', 'uploads', 'bottles'));
+  },
+  filename: function (req, file, cb) {
+    const ext = path.extname(file.originalname);
+    cb(null, `${req.user.userId}-${Date.now()}${ext}`);
+  }
+});
+
+const bottleUpload = multer({
+  storage: bottleStorage,
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: function (req, file, cb) {
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+    if (allowedTypes.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('只支持 JPG、PNG、GIF、WebP 格式的图片'));
+    }
+  }
+});
 
 function getLocalDateStr(date) {
   const d = date || new Date();
@@ -54,13 +81,51 @@ router.get('/daily-limits', async (req, res) => {
   }
 });
 
+router.post('/upload-image', (req, res) => {
+  bottleUpload.single('image')(req, res, async function (err) {
+    if (err) {
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(400).json(generateResponse(false, null, '图片大小不能超过5MB'));
+      }
+      return res.status(400).json(generateResponse(false, null, err.message || '上传失败'));
+    }
+
+    if (!req.file) {
+      return res.status(400).json(generateResponse(false, null, '请选择图片'));
+    }
+
+    try {
+      const imageUrl = `/uploads/bottles/${req.file.filename}`;
+      res.json(generateResponse(true, { imageUrl }, '图片上传成功'));
+    } catch (error) {
+      console.error('图片上传失败:', error);
+      res.status(500).json(generateResponse(false, null, '图片上传失败'));
+    }
+  });
+});
+
 router.post('/throw', async (req, res) => {
   try {
-    const { content } = req.body;
+    const { content, tag, imageUrl, targetGender, targetMinAge, targetMaxAge } = req.body;
     const senderId = req.user.userId;
 
     if (!content || content.trim().length === 0) {
       return res.status(400).json(generateResponse(false, null, '内容不能为空'));
+    }
+
+    if (tag && !VALID_TAGS.includes(tag)) {
+      return res.status(400).json(generateResponse(false, null, '标签无效'));
+    }
+
+    if (targetGender && !['all', 'male', 'female'].includes(targetGender)) {
+      return res.status(400).json(generateResponse(false, null, '目标性别无效'));
+    }
+
+    const validatedMinAge = targetMinAge ? parseInt(targetMinAge) : null;
+    const validatedMaxAge = targetMaxAge ? parseInt(targetMaxAge) : null;
+
+    if (validatedMinAge !== null && validatedMaxAge !== null && validatedMinAge > validatedMaxAge) {
+      return res.status(400).json(generateResponse(false, null, '最小年龄不能大于最大年龄'));
     }
 
     const today = getLocalDateStr();
@@ -74,8 +139,8 @@ router.post('/throw', async (req, res) => {
     const bottleId = generateUUID();
 
     await pool.execute(
-      'INSERT INTO bottles (id, sender_id, content, status) VALUES (?, ?, ?, ?)',
-      [bottleId, senderId, content.trim(), 'floating']
+      'INSERT INTO bottles (id, sender_id, content, tag, image_url, target_gender, target_min_age, target_max_age, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [bottleId, senderId, content.trim(), tag || null, imageUrl || null, targetGender || 'all', validatedMinAge, validatedMaxAge, 'floating']
     );
 
     await pool.execute(
@@ -86,6 +151,11 @@ router.post('/throw', async (req, res) => {
     res.json(generateResponse(true, {
       id: bottleId,
       content: content.trim(),
+      tag: tag || null,
+      imageUrl: imageUrl || null,
+      targetGender: targetGender || 'all',
+      targetMinAge: validatedMinAge,
+      targetMaxAge: validatedMaxAge,
       throwRemaining: Math.max(0, DAILY_LIMIT - throwCount - 1)
     }, '瓶子扔出成功'));
   } catch (error) {
@@ -94,11 +164,30 @@ router.post('/throw', async (req, res) => {
   }
 });
 
-function buildFilterQuery(filters, pickerId, isCount = false) {
+function buildFilterQuery(filters, pickerId, isCount = false, pickerInfo = null) {
   const conditions = ['b.status = ?', 'b.sender_id != ?'];
   const params = ['floating', pickerId];
 
+  if (pickerInfo) {
+    if (pickerInfo.gender) {
+      conditions.push('(b.target_gender = ? OR b.target_gender = ? OR b.target_gender IS NULL)');
+      params.push('all', pickerInfo.gender);
+    }
+
+    if (pickerInfo.age !== null && pickerInfo.age !== undefined) {
+      conditions.push('(b.target_min_age IS NULL OR b.target_min_age <= ?)');
+      params.push(pickerInfo.age);
+      conditions.push('(b.target_max_age IS NULL OR b.target_max_age >= ?)');
+      params.push(pickerInfo.age);
+    }
+  }
+
   if (filters) {
+    if (filters.tag && filters.tag !== 'all') {
+      conditions.push('b.tag = ?');
+      params.push(filters.tag);
+    }
+
     if (filters.gender && filters.gender !== 'all') {
       const genderMap = {
         'male': '男',
@@ -146,11 +235,42 @@ function buildFilterQuery(filters, pickerId, isCount = false) {
   const whereClause = conditions.join(' AND ');
   const selectFields = isCount
     ? 'COUNT(*) as total'
-    : 'b.id, b.sender_id, b.content, b.created_at, u.nickname as sender_nickname, u.avatar as sender_avatar, u.gender as sender_gender, u.birthday as sender_birthday';
+    : 'b.id, b.sender_id, b.content, b.tag, b.image_url, b.target_gender, b.target_min_age, b.target_max_age, b.created_at, u.nickname as sender_nickname, u.avatar as sender_avatar, u.gender as sender_gender, u.birthday as sender_birthday';
 
   return {
     query: `SELECT ${selectFields} FROM bottles b LEFT JOIN users u ON b.sender_id = u.id WHERE ${whereClause}`,
     params
+  };
+}
+
+function calculateAge(birthday) {
+  if (!birthday) return null;
+  const birthDate = new Date(birthday);
+  const today = new Date();
+  let age = today.getFullYear() - birthDate.getFullYear();
+  const monthDiff = today.getMonth() - birthDate.getMonth();
+  if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+    age--;
+  }
+  return age >= 18 && age <= 100 ? age : null;
+}
+
+async function getPickerInfo(pickerId) {
+  const [users] = await pool.execute(
+    'SELECT gender, birthday FROM users WHERE id = ?',
+    [pickerId]
+  );
+  if (users.length === 0) return null;
+  const user = users[0];
+  const genderMap = {
+    '男': 'male',
+    '女': 'female',
+    'male': 'male',
+    'female': 'female'
+  };
+  return {
+    gender: genderMap[user.gender] || null,
+    age: calculateAge(user.birthday)
   };
 }
 
@@ -159,7 +279,8 @@ router.post('/pick/count', async (req, res) => {
     const pickerId = req.user.userId;
     const filters = req.body || {};
 
-    const { query, params } = buildFilterQuery(filters, pickerId, true);
+    const pickerInfo = await getPickerInfo(pickerId);
+    const { query, params } = buildFilterQuery(filters, pickerId, true, pickerInfo);
     const [result] = await pool.execute(query, params);
 
     res.json(generateResponse(true, {
@@ -184,7 +305,8 @@ router.post('/pick', async (req, res) => {
       return res.status(429).json(generateResponse(false, null, `今日捞瓶子次数已达上限(${DAILY_LIMIT}次)，明天再来吧`));
     }
 
-    const { query, params } = buildFilterQuery(filters, pickerId, false);
+    const pickerInfo = await getPickerInfo(pickerId);
+    const { query, params } = buildFilterQuery(filters, pickerId, false, pickerInfo);
     const fullQuery = `${query} ORDER BY RAND() LIMIT 1`;
 
     const [floatingBottles] = await pool.execute(fullQuery, params);
@@ -208,6 +330,11 @@ router.post('/pick', async (req, res) => {
     res.json(generateResponse(true, {
       id: bottle.id,
       content: bottle.content,
+      tag: bottle.tag,
+      imageUrl: bottle.image_url,
+      targetGender: bottle.target_gender,
+      targetMinAge: bottle.target_min_age,
+      targetMaxAge: bottle.target_max_age,
       senderId: bottle.sender_id,
       senderNickname: bottle.sender_nickname,
       senderAvatar: bottle.sender_avatar,

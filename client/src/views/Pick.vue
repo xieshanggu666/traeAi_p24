@@ -76,8 +76,16 @@
             <span class="bottle-tag">🍾 漂流瓶</span>
           </div>
 
+          <div v-if="bottle.tag" class="bottle-tag-display">
+            <span class="tag-label">🏷️ {{ bottle.tag }}</span>
+          </div>
+
           <div class="bottle-content">
             {{ bottle.content }}
+          </div>
+
+          <div v-if="bottle.imageUrl" class="bottle-image-wrapper" @click="previewImage(bottle.imageUrl)">
+            <img :src="getImageFullUrl(bottle.imageUrl)" class="bottle-image" alt="瓶子图片" />
           </div>
 
           <div class="bottle-actions">
@@ -221,6 +229,25 @@
 
         <div class="filter-section">
           <div class="filter-label">
+            <span class="filter-icon">🏷️</span>
+            标签筛选
+          </div>
+          <div class="filter-options tag-filter-options">
+            <div 
+              v-for="option in tagOptions" 
+              :key="option.value"
+              class="filter-option tag-filter-option"
+              :class="{ active: filters.tag === option.value }"
+              @click="setFilter('tag', option.value)"
+            >
+              <span v-if="option.emoji" class="option-emoji">{{ option.emoji }}</span>
+              {{ option.label }}
+            </div>
+          </div>
+        </div>
+
+        <div class="filter-section">
+          <div class="filter-label">
             <span class="filter-icon">👤</span>
             性别筛选
           </div>
@@ -320,7 +347,7 @@
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue';
 import { useRouter } from 'vue-router';
-import { showToast } from 'vant';
+import { showToast, showImagePreview } from 'vant';
 import { pickBottle as apiPickBottle, returnBottle as apiReturnBottle, replyBottle as apiReplyBottle, getDailyLimits, getFilteredBottleCount } from '../api';
 import AvatarDisplay from '../components/AvatarDisplay.vue';
 
@@ -340,11 +367,23 @@ const showFilter = ref(false);
 const filteredCount = ref(0);
 
 const filters = ref({
+  tag: 'all',
   gender: 'all',
   minAge: 18,
   maxAge: 60,
   timeRange: 'all'
 });
+
+const tagOptions = [
+  { label: '不限', value: 'all' },
+  { label: '情绪倾诉', value: '情绪倾诉', emoji: '💬' },
+  { label: '交友', value: '交友', emoji: '🤝' },
+  { label: '求助', value: '求助', emoji: '🆘' },
+  { label: '树洞', value: '树洞', emoji: '🌳' },
+  { label: '闲聊', value: '闲聊', emoji: '☕' },
+  { label: '考研搭子', value: '考研搭子', emoji: '📚' },
+  { label: '游戏组队', value: '游戏组队', emoji: '🎮' }
+];
 
 const quickReplyCategories = [
   {
@@ -407,7 +446,8 @@ const timeOptions = [
 ];
 
 const hasActiveFilters = computed(() => {
-  return filters.value.gender !== 'all' || 
+  return filters.value.tag !== 'all' ||
+         filters.value.gender !== 'all' || 
          filters.value.minAge !== 18 || 
          filters.value.maxAge !== 60 || 
          filters.value.timeRange !== 'all';
@@ -415,6 +455,10 @@ const hasActiveFilters = computed(() => {
 
 const filterStatusText = computed(() => {
   const parts = [];
+  if (filters.value.tag !== 'all') {
+    const tagOption = tagOptions.find(o => o.value === filters.value.tag);
+    if (tagOption) parts.push(tagOption.label);
+  }
   if (filters.value.gender !== 'all') {
     parts.push(filters.value.gender === 'male' ? '男' : '女');
   }
@@ -498,6 +542,7 @@ function setFilter(key, value) {
 
 function resetFilters() {
   filters.value = {
+    tag: 'all',
     gender: 'all',
     minAge: 18,
     maxAge: 60,
@@ -598,6 +643,22 @@ function resetAndPick() {
 
 function goBack() {
   router.back();
+}
+
+function getImageFullUrl(url) {
+  if (!url) return '';
+  if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('data:')) {
+    return url;
+  }
+  const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4022';
+  return baseUrl + url;
+}
+
+function previewImage(url) {
+  showImagePreview({
+    images: [getImageFullUrl(url)],
+    closeable: true
+  });
 }
 </script>
 
@@ -938,6 +999,21 @@ function goBack() {
   border-radius: 12px;
 }
 
+.bottle-tag-display {
+  margin-bottom: 12px;
+}
+
+.tag-label {
+  display: inline-block;
+  padding: 6px 14px;
+  background: linear-gradient(135deg, #667eea15 0%, #764ba215 100%);
+  color: #667eea;
+  border-radius: 16px;
+  font-size: 13px;
+  font-weight: 500;
+  border: 1px solid #667eea40;
+}
+
 .bottle-content {
   background: #fafafa;
   border-radius: 12px;
@@ -946,6 +1022,25 @@ function goBack() {
   line-height: 1.8;
   color: #333;
   min-height: 120px;
+}
+
+.bottle-image-wrapper {
+  margin-top: 15px;
+  border-radius: 12px;
+  overflow: hidden;
+  cursor: pointer;
+  transition: transform 0.2s;
+}
+
+.bottle-image-wrapper:active {
+  transform: scale(0.99);
+}
+
+.bottle-image {
+  width: 100%;
+  max-height: 300px;
+  object-fit: cover;
+  display: block;
 }
 
 .bottle-actions {
@@ -1241,6 +1336,25 @@ function goBack() {
   border-color: #667eea;
   color: #667eea;
   font-weight: 500;
+}
+
+.tag-filter-options {
+  gap: 8px;
+}
+
+.tag-filter-option {
+  flex: 0 0 auto;
+  min-width: auto;
+  padding: 8px 14px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 16px;
+  font-size: 13px;
+}
+
+.option-emoji {
+  font-size: 14px;
 }
 
 .age-slider {

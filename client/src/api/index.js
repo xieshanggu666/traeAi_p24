@@ -27,8 +27,15 @@ export const logout = () => {
   return request.post('/user/logout');
 };
 
-export const throwBottle = (content) => {
-  return request.post('/bottle/throw', { content });
+export const uploadBottleImage = (formData) => {
+  return request.post('/bottle/upload-image', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: 30000
+  });
+};
+
+export const throwBottle = (data) => {
+  return request.post('/bottle/throw', data);
 };
 
 export const pickBottle = (filters) => {
