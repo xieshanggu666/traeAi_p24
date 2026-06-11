@@ -4,6 +4,7 @@ const pool = require('../config/db');
 const { generateUUID, generateResponse } = require('../utils/helper');
 
 let hasMsgTypeColumn = null;
+let hasIntimacyTable = null;
 
 async function checkMsgTypeColumn() {
   if (hasMsgTypeColumn !== null) return hasMsgTypeColumn;
@@ -14,6 +15,41 @@ async function checkMsgTypeColumn() {
     hasMsgTypeColumn = false;
   }
   return hasMsgTypeColumn;
+}
+
+async function checkIntimacyTable() {
+  if (hasIntimacyTable !== null) return hasIntimacyTable;
+  try {
+    await pool.execute('SELECT 1 FROM bottle_intimacy LIMIT 0');
+    hasIntimacyTable = true;
+  } catch {
+    hasIntimacyTable = false;
+  }
+  return hasIntimacyTable;
+}
+
+async function ensureIntimacy(bottleId) {
+  const [rows] = await pool.execute(
+    'SELECT id FROM bottle_intimacy WHERE bottle_id = ?',
+    [bottleId]
+  );
+  if (rows.length === 0) {
+    const id = generateUUID();
+    await pool.execute(
+      'INSERT INTO bottle_intimacy (id, bottle_id, intimacy_value) VALUES (?, ?, 0)',
+      [id, bottleId]
+    );
+  }
+}
+
+async function addIntimacy(bottleId, amount) {
+  const tableExists = await checkIntimacyTable();
+  if (!tableExists) return;
+  await ensureIntimacy(bottleId);
+  await pool.execute(
+    'UPDATE bottle_intimacy SET intimacy_value = intimacy_value + ? WHERE bottle_id = ?',
+    [amount, bottleId]
+  );
 }
 
 const PRODUCTS = [
@@ -696,6 +732,8 @@ router.post('/send-chat-gift', async (req, res) => {
     );
 
     await connection.commit();
+
+    await addIntimacy(bottleId, gift.charmValue * 2);
 
     res.json(generateResponse(true, {
       message: message[0],

@@ -16,6 +16,61 @@ async function checkTypeColumn() {
   return hasTypeColumn;
 }
 
+let hasIntimacyTable = null;
+
+async function checkIntimacyTable() {
+  if (hasIntimacyTable !== null) return hasIntimacyTable;
+  try {
+    await pool.execute('SELECT 1 FROM bottle_intimacy LIMIT 0');
+    hasIntimacyTable = true;
+  } catch {
+    hasIntimacyTable = false;
+  }
+  return hasIntimacyTable;
+}
+
+async function ensureIntimacy(bottleId) {
+  const [rows] = await pool.execute(
+    'SELECT id FROM bottle_intimacy WHERE bottle_id = ?',
+    [bottleId]
+  );
+  if (rows.length === 0) {
+    const id = generateUUID();
+    await pool.execute(
+      'INSERT INTO bottle_intimacy (id, bottle_id, intimacy_value) VALUES (?, ?, 0)',
+      [id, bottleId]
+    );
+  }
+}
+
+async function addIntimacy(bottleId, amount) {
+  const tableExists = await checkIntimacyTable();
+  if (!tableExists) return;
+  await ensureIntimacy(bottleId);
+  await pool.execute(
+    'UPDATE bottle_intimacy SET intimacy_value = intimacy_value + ? WHERE bottle_id = ?',
+    [amount, bottleId]
+  );
+}
+
+async function getConsecutiveCount(bottleId, userId) {
+  const [msgs] = await pool.execute(
+    'SELECT sender_id FROM messages WHERE bottle_id = ? ORDER BY created_at DESC LIMIT 10',
+    [bottleId]
+  );
+  let count = 0;
+  for (const msg of msgs) {
+    if (msg.sender_id === userId) {
+      count++;
+    } else {
+      break;
+    }
+  }
+  return count;
+}
+
+const CONSECUTIVE_LIMIT = 5;
+
 router.get('/:bottleId', async (req, res) => {
   try {
     const { bottleId } = req.params;
@@ -78,6 +133,11 @@ router.post('/send', async (req, res) => {
       return res.status(400).json(generateResponse(false, null, '参数不完整'));
     }
 
+    const consecutiveCount = await getConsecutiveCount(bottleId, senderId);
+    if (consecutiveCount >= CONSECUTIVE_LIMIT) {
+      return res.status(429).json(generateResponse(false, null, '对方尚未回复，请等待对方回复后再发送消息'));
+    }
+
     const messageId = generateUUID();
     const type = req.body.type || 'text';
     const typeCol = await checkTypeColumn();
@@ -94,6 +154,8 @@ router.post('/send', async (req, res) => {
       );
     }
 
+    await addIntimacy(bottleId, 1);
+
     const selectType = typeCol ? ', m.type' : '';
     const [message] = await pool.execute(
       'SELECT m.id, m.bottle_id, m.sender_id, m.receiver_id, m.content' + selectType + ', m.is_read, m.created_at, ' +
@@ -108,6 +170,58 @@ router.post('/send', async (req, res) => {
   } catch (error) {
     console.error('发送消息失败:', error);
     res.status(500).json(generateResponse(false, null, '发送消息失败'));
+  }
+});
+
+router.get('/intimacy/:bottleId', async (req, res) => {
+  try {
+    const { bottleId } = req.params;
+    const userId = req.user.userId;
+
+    if (!bottleId) {
+      return res.status(400).json(generateResponse(false, null, '参数不完整'));
+    }
+
+    const tableExists = await checkIntimacyTable();
+    if (!tableExists) {
+      return res.json(generateResponse(true, { intimacyValue: 0 }, '获取成功'));
+    }
+
+    const [rows] = await pool.execute(
+      'SELECT intimacy_value FROM bottle_intimacy WHERE bottle_id = ?',
+      [bottleId]
+    );
+
+    res.json(generateResponse(true, {
+      intimacyValue: rows.length > 0 ? rows[0].intimacy_value : 0
+    }, '获取成功'));
+  } catch (error) {
+    console.error('获取亲密值失败:', error);
+    res.status(500).json(generateResponse(false, null, '获取亲密值失败'));
+  }
+});
+
+router.get('/send-limit/:bottleId', async (req, res) => {
+  try {
+    const { bottleId } = req.params;
+    const userId = req.user.userId;
+
+    if (!bottleId) {
+      return res.status(400).json(generateResponse(false, null, '参数不完整'));
+    }
+
+    const consecutiveCount = await getConsecutiveCount(bottleId, userId);
+    const canSend = consecutiveCount < CONSECUTIVE_LIMIT;
+
+    res.json(generateResponse(true, {
+      consecutiveCount,
+      limit: CONSECUTIVE_LIMIT,
+      canSend,
+      remaining: Math.max(0, CONSECUTIVE_LIMIT - consecutiveCount)
+    }, '获取成功'));
+  } catch (error) {
+    console.error('获取发送限制失败:', error);
+    res.status(500).json(generateResponse(false, null, '获取发送限制失败'));
   }
 });
 

@@ -9,7 +9,11 @@
           <div class="chat-status">匿名聊天中</div>
         </div>
       </div>
-      <div style="width: 24px;"></div>
+      <div class="intimacy-display" v-if="intimacyValue > 0">
+        <span class="intimacy-heart">❤</span>
+        <span class="intimacy-value">{{ intimacyValue }}</span>
+      </div>
+      <div style="width: 24px;" v-else></div>
     </div>
 
     <div class="bottle-info" v-if="bottleDetail">
@@ -68,6 +72,11 @@
         </template>
       </div>
 
+      <div class="consecutive-warning" v-if="isConsecutiveLimited">
+        <span class="consecutive-warning-icon">💬</span>
+        <span>对方尚未回复，请等待对方回复后再发送消息</span>
+      </div>
+
       <van-loading v-if="loading" color="#1989fa" style="margin-top: 40px;">
         加载中...
       </van-loading>
@@ -119,12 +128,13 @@
       <textarea
         v-model="messageContent"
         class="message-input"
-        placeholder="输入消息..."
+        :placeholder="isConsecutiveLimited ? '等待对方回复...' : '输入消息...'"
         rows="1"
         @keydown.enter.exact.prevent="sendMessage"
         @input="adjustTextareaHeight"
         @focus="showQuickReply = false"
         ref="textareaRef"
+        :disabled="isConsecutiveLimited"
       ></textarea>
       <van-button
         type="primary"
@@ -194,7 +204,7 @@ import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { showToast, showDialog } from 'vant';
 import { getUser } from '../utils/storage';
-import { getMessages, sendMessage as apiSendMessage, getBottleDetail, getBackpackItems, sendChatGift } from '../api';
+import { getMessages, sendMessage as apiSendMessage, getBottleDetail, getBackpackItems, sendChatGift, getIntimacy } from '../api';
 import AvatarDisplay from '../components/AvatarDisplay.vue';
 
 const route = useRoute();
@@ -219,6 +229,24 @@ const giftLoading = ref(false);
 const isSendingGift = ref(false);
 const showQuickReply = ref(false);
 const activeQuickCategory = ref(0);
+const intimacyValue = ref(0);
+
+const CONSECUTIVE_LIMIT = 5;
+
+const consecutiveCount = computed(() => {
+  if (!currentUserId.value || messages.value.length === 0) return 0;
+  let count = 0;
+  for (let i = messages.value.length - 1; i >= 0; i--) {
+    if (messages.value[i].sender_id === currentUserId.value) {
+      count++;
+    } else {
+      break;
+    }
+  }
+  return count;
+});
+
+const isConsecutiveLimited = computed(() => consecutiveCount.value >= CONSECUTIVE_LIMIT);
 
 const quickReplyCategories = [
   {
@@ -270,7 +298,7 @@ const quickReplyCategories = [
 let timer = null;
 
 const canSend = computed(() => {
-  return messageContent.value.trim().length > 0 && otherUserId.value;
+  return messageContent.value.trim().length > 0 && otherUserId.value && !isConsecutiveLimited.value;
 });
 
 onMounted(() => {
@@ -314,7 +342,7 @@ async function initChat() {
     };
     otherUserId.value = detail.other_id;
     
-    await fetchMessages();
+    await Promise.all([fetchMessages(), fetchIntimacy()]);
   } catch (error) {
     showToast(error.businessMessage || error.httpMessage || '出现异常');
   } finally {
@@ -331,6 +359,15 @@ async function fetchMessages() {
   }
 }
 
+async function fetchIntimacy() {
+  try {
+    const result = await getIntimacy(bottleId);
+    intimacyValue.value = result.intimacyValue || 0;
+  } catch (error) {
+    console.error('获取亲密值失败:', error);
+  }
+}
+
 async function sendMessage() {
   if (!canSend.value) return;
 
@@ -343,6 +380,7 @@ async function sendMessage() {
       messageContent.value
     );
     messages.value.push(result);
+    intimacyValue.value += 1;
     messageContent.value = '';
     resetTextareaHeight();
     scrollToBottom();
@@ -452,6 +490,8 @@ async function handleSendGift() {
     if (result.message) {
       messages.value.push(result.message);
     }
+
+    intimacyValue.value += selectedGift.value.charmValue * 2;
     
     showToast(result._message || '赠送成功');
     showGiftPanel.value = false;
@@ -523,6 +563,33 @@ function useQuickReply(msg) {
 .chat-status {
   font-size: 12px;
   color: #07c160;
+}
+
+.intimacy-display {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  background: linear-gradient(135deg, #fff0f5 0%, #ffe0ec 100%);
+  border-radius: 14px;
+  flex-shrink: 0;
+}
+
+.intimacy-heart {
+  font-size: 14px;
+  color: #ff4d6a;
+  animation: heartbeat 1.5s ease-in-out infinite;
+}
+
+@keyframes heartbeat {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.2); }
+}
+
+.intimacy-value {
+  font-size: 13px;
+  font-weight: bold;
+  color: #ff4d6a;
 }
 
 .bottle-info {
@@ -600,6 +667,24 @@ function useQuickReply(msg) {
   text-align: right;
 }
 
+.consecutive-warning {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 10px 16px;
+  margin: 8px 0;
+  background: linear-gradient(135deg, #fff8e1 0%, #ffecb3 100%);
+  border-radius: 20px;
+  font-size: 12px;
+  color: #f57c00;
+  text-align: center;
+}
+
+.consecutive-warning-icon {
+  font-size: 14px;
+}
+
 .no-more {
   text-align: center;
   color: #ccc;
@@ -655,6 +740,12 @@ function useQuickReply(msg) {
 .message-input:focus {
   border-color: #667eea;
   background: #fff;
+}
+
+.message-input:disabled {
+  background: #f0f0f0;
+  color: #999;
+  cursor: not-allowed;
 }
 
 .send-button {

@@ -150,3 +150,11 @@ export const searchUsers = (keyword) => {
 export const sendChatGift = (bottleId, receiverId, giftKey) => {
   return request.post('/shop/send-chat-gift', { bottleId, receiverId, giftKey });
 };
+
+export const getIntimacy = (bottleId) => {
+  return request.get(`/message/intimacy/${bottleId}`);
+};
+
+export const getSendLimit = (bottleId) => {
+  return request.get(`/message/send-limit/${bottleId}`);
+};
