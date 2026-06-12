@@ -4,7 +4,7 @@ const pool = require('../config/db');
 const { generateUUID, generateResponse } = require('../utils/helper');
 
 let hasMsgTypeColumn = null;
-let hasIntimacyTable = null;
+let hasUserIntimacyTable = null;
 
 async function checkMsgTypeColumn() {
   if (hasMsgTypeColumn !== null) return hasMsgTypeColumn;
@@ -17,39 +17,66 @@ async function checkMsgTypeColumn() {
   return hasMsgTypeColumn;
 }
 
-async function checkIntimacyTable() {
-  if (hasIntimacyTable !== null) return hasIntimacyTable;
+async function checkUserIntimacyTable() {
+  if (hasUserIntimacyTable !== null) return hasUserIntimacyTable;
   try {
-    await pool.execute('SELECT 1 FROM bottle_intimacy LIMIT 0');
-    hasIntimacyTable = true;
+    await pool.execute('SELECT 1 FROM user_intimacy LIMIT 0');
+    hasUserIntimacyTable = true;
   } catch {
-    hasIntimacyTable = false;
+    hasUserIntimacyTable = false;
   }
-  return hasIntimacyTable;
+  return hasUserIntimacyTable;
 }
 
-async function ensureIntimacy(bottleId) {
+function normalizeUserPair(userIdA, userIdB) {
+  if (userIdA < userIdB) {
+    return { user_id1: userIdA, user_id2: userIdB };
+  }
+  return { user_id1: userIdB, user_id2: userIdA };
+}
+
+async function ensureUserIntimacy(userIdA, userIdB) {
+  const { user_id1, user_id2 } = normalizeUserPair(userIdA, userIdB);
   const [rows] = await pool.execute(
-    'SELECT id FROM bottle_intimacy WHERE bottle_id = ?',
-    [bottleId]
+    'SELECT id FROM user_intimacy WHERE user_id1 = ? AND user_id2 = ?',
+    [user_id1, user_id2]
   );
   if (rows.length === 0) {
+    const { generateUUID } = require('../utils/helper');
     const id = generateUUID();
     await pool.execute(
-      'INSERT INTO bottle_intimacy (id, bottle_id, intimacy_value) VALUES (?, ?, 0)',
-      [id, bottleId]
+      'INSERT INTO user_intimacy (id, user_id1, user_id2, intimacy_value) VALUES (?, ?, ?, 0)',
+      [id, user_id1, user_id2]
     );
   }
 }
 
-async function addIntimacy(bottleId, amount) {
-  const tableExists = await checkIntimacyTable();
+async function addIntimacyByUserPair(userIdA, userIdB, amount) {
+  const tableExists = await checkUserIntimacyTable();
   if (!tableExists) return;
-  await ensureIntimacy(bottleId);
+  await ensureUserIntimacy(userIdA, userIdB);
+  const { user_id1, user_id2 } = normalizeUserPair(userIdA, userIdB);
   await pool.execute(
-    'UPDATE bottle_intimacy SET intimacy_value = intimacy_value + ? WHERE bottle_id = ?',
-    [amount, bottleId]
+    'UPDATE user_intimacy SET intimacy_value = intimacy_value + ? WHERE user_id1 = ? AND user_id2 = ?',
+    [amount, user_id1, user_id2]
   );
+}
+
+async function getBottleUserPair(bottleId) {
+  const [rows] = await pool.execute(
+    'SELECT sender_id, picker_id FROM bottles WHERE id = ?',
+    [bottleId]
+  );
+  if (rows.length === 0) return null;
+  const { sender_id, picker_id } = rows[0];
+  if (!sender_id || !picker_id) return null;
+  return normalizeUserPair(sender_id, picker_id);
+}
+
+async function addIntimacy(bottleId, amount) {
+  const pair = await getBottleUserPair(bottleId);
+  if (!pair) return;
+  await addIntimacyByUserPair(pair.user_id1, pair.user_id2, amount);
 }
 
 const PRODUCTS = [

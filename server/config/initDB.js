@@ -76,6 +76,22 @@ async function initDatabase() {
     `);
     console.log('消息表创建成功');
 
+    console.log('开始创建用户亲密度表...');
+    await connection.execute(`
+      CREATE TABLE IF NOT EXISTS user_intimacy (
+        id VARCHAR(36) PRIMARY KEY COMMENT '亲密度记录ID',
+        user_id1 VARCHAR(36) NOT NULL COMMENT '用户1ID',
+        user_id2 VARCHAR(36) NOT NULL COMMENT '用户2ID',
+        intimacy_value INT DEFAULT 0 COMMENT '亲密度值',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+        UNIQUE KEY uk_user_pair (user_id1, user_id2),
+        INDEX idx_user_id1 (user_id1),
+        INDEX idx_user_id2 (user_id2)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+    console.log('用户亲密度表创建成功');
+
     await connection.end();
     console.log('\n数据库初始化完成！');
     process.exit(0);

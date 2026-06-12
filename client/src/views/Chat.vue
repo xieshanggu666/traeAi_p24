@@ -279,7 +279,7 @@ import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { showToast, showDialog } from 'vant';
 import { getUser } from '../utils/storage';
-import { getMessages, sendMessage as apiSendMessage, getBottleDetail, getBackpackItems, sendChatGift, getIntimacy, getUserProfile, sendFriendRequest } from '../api';
+import { getMessages, sendMessage as apiSendMessage, getBottleDetail, getBackpackItems, sendChatGift, getIntimacy, getUserIntimacy, getUserProfile, sendFriendRequest } from '../api';
 import AvatarDisplay from '../components/AvatarDisplay.vue';
 
 const route = useRoute();
@@ -454,8 +454,9 @@ async function fetchMessages() {
 }
 
 async function fetchIntimacy() {
+  if (!otherUserId.value) return;
   try {
-    const result = await getIntimacy(bottleId);
+    const result = await getUserIntimacy(otherUserId.value);
     intimacyValue.value = result.intimacyValue || 0;
   } catch (error) {
     console.error('获取亲密值失败:', error);

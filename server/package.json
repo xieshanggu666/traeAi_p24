@@ -10,6 +10,7 @@
     "migrate-db": "node config/migrateDB.js",
     "migrate-friends": "node config/migrateFriends.js",
     "migrate-bottle-features": "node config/migrateBottleAdvancedFeatures.js",
+    "migrate-user-intimacy": "node config/migrateUserIntimacy.js",
     "test": "jest --verbose --runInBand",
     "test:coverage": "jest --coverage --runInBand"
   },

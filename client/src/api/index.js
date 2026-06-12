@@ -170,6 +170,10 @@ export const getIntimacy = (bottleId) => {
   return request.get(`/message/intimacy/${bottleId}`);
 };
 
+export const getUserIntimacy = (otherUserId) => {
+  return request.get(`/message/intimacy/user/${otherUserId}`);
+};
+
 export const getSendLimit = (bottleId) => {
   return request.get(`/message/send-limit/${bottleId}`);
 };

@@ -16,41 +16,78 @@ async function checkTypeColumn() {
   return hasTypeColumn;
 }
 
-let hasIntimacyTable = null;
+let hasUserIntimacyTable = null;
 
-async function checkIntimacyTable() {
-  if (hasIntimacyTable !== null) return hasIntimacyTable;
+async function checkUserIntimacyTable() {
+  if (hasUserIntimacyTable !== null) return hasUserIntimacyTable;
   try {
-    await pool.execute('SELECT 1 FROM bottle_intimacy LIMIT 0');
-    hasIntimacyTable = true;
+    await pool.execute('SELECT 1 FROM user_intimacy LIMIT 0');
+    hasUserIntimacyTable = true;
   } catch {
-    hasIntimacyTable = false;
+    hasUserIntimacyTable = false;
   }
-  return hasIntimacyTable;
+  return hasUserIntimacyTable;
 }
 
-async function ensureIntimacy(bottleId) {
+function normalizeUserPair(userIdA, userIdB) {
+  if (userIdA < userIdB) {
+    return { user_id1: userIdA, user_id2: userIdB };
+  }
+  return { user_id1: userIdB, user_id2: userIdA };
+}
+
+async function getBottleUserPair(bottleId) {
   const [rows] = await pool.execute(
-    'SELECT id FROM bottle_intimacy WHERE bottle_id = ?',
+    'SELECT sender_id, picker_id FROM bottles WHERE id = ?',
     [bottleId]
+  );
+  if (rows.length === 0) return null;
+  const { sender_id, picker_id } = rows[0];
+  if (!sender_id || !picker_id) return null;
+  return normalizeUserPair(sender_id, picker_id);
+}
+
+async function ensureUserIntimacy(userIdA, userIdB) {
+  const { user_id1, user_id2 } = normalizeUserPair(userIdA, userIdB);
+  const [rows] = await pool.execute(
+    'SELECT id FROM user_intimacy WHERE user_id1 = ? AND user_id2 = ?',
+    [user_id1, user_id2]
   );
   if (rows.length === 0) {
     const id = generateUUID();
     await pool.execute(
-      'INSERT INTO bottle_intimacy (id, bottle_id, intimacy_value) VALUES (?, ?, 0)',
-      [id, bottleId]
+      'INSERT INTO user_intimacy (id, user_id1, user_id2, intimacy_value) VALUES (?, ?, ?, 0)',
+      [id, user_id1, user_id2]
     );
   }
 }
 
-async function addIntimacy(bottleId, amount) {
-  const tableExists = await checkIntimacyTable();
+async function addIntimacyByUserPair(userIdA, userIdB, amount) {
+  const tableExists = await checkUserIntimacyTable();
   if (!tableExists) return;
-  await ensureIntimacy(bottleId);
+  await ensureUserIntimacy(userIdA, userIdB);
+  const { user_id1, user_id2 } = normalizeUserPair(userIdA, userIdB);
   await pool.execute(
-    'UPDATE bottle_intimacy SET intimacy_value = intimacy_value + ? WHERE bottle_id = ?',
-    [amount, bottleId]
+    'UPDATE user_intimacy SET intimacy_value = intimacy_value + ? WHERE user_id1 = ? AND user_id2 = ?',
+    [amount, user_id1, user_id2]
   );
+}
+
+async function addIntimacy(bottleId, amount) {
+  const pair = await getBottleUserPair(bottleId);
+  if (!pair) return;
+  await addIntimacyByUserPair(pair.user_id1, pair.user_id2, amount);
+}
+
+async function getIntimacyByUserPair(userIdA, userIdB) {
+  const tableExists = await checkUserIntimacyTable();
+  if (!tableExists) return 0;
+  const { user_id1, user_id2 } = normalizeUserPair(userIdA, userIdB);
+  const [rows] = await pool.execute(
+    'SELECT intimacy_value FROM user_intimacy WHERE user_id1 = ? AND user_id2 = ?',
+    [user_id1, user_id2]
+  );
+  return rows.length > 0 ? rows[0].intimacy_value : 0;
 }
 
 async function getConsecutiveCount(bottleId, userId) {
@@ -176,27 +213,39 @@ router.post('/send', async (req, res) => {
 router.get('/intimacy/:bottleId', async (req, res) => {
   try {
     const { bottleId } = req.params;
-    const userId = req.user.userId;
 
     if (!bottleId) {
       return res.status(400).json(generateResponse(false, null, '参数不完整'));
     }
 
-    const tableExists = await checkIntimacyTable();
-    if (!tableExists) {
+    const pair = await getBottleUserPair(bottleId);
+    if (!pair) {
       return res.json(generateResponse(true, { intimacyValue: 0 }, '获取成功'));
     }
 
-    const [rows] = await pool.execute(
-      'SELECT intimacy_value FROM bottle_intimacy WHERE bottle_id = ?',
-      [bottleId]
-    );
+    const intimacyValue = await getIntimacyByUserPair(pair.user_id1, pair.user_id2);
 
-    res.json(generateResponse(true, {
-      intimacyValue: rows.length > 0 ? rows[0].intimacy_value : 0
-    }, '获取成功'));
+    res.json(generateResponse(true, { intimacyValue }, '获取成功'));
   } catch (error) {
     console.error('获取亲密值失败:', error);
+    res.status(500).json(generateResponse(false, null, '获取亲密值失败'));
+  }
+});
+
+router.get('/intimacy/user/:otherUserId', async (req, res) => {
+  try {
+    const { otherUserId } = req.params;
+    const userId = req.user.userId;
+
+    if (!otherUserId) {
+      return res.status(400).json(generateResponse(false, null, '参数不完整'));
+    }
+
+    const intimacyValue = await getIntimacyByUserPair(userId, otherUserId);
+
+    res.json(generateResponse(true, { intimacyValue }, '获取成功'));
+  } catch (error) {
+    console.error('获取用户亲密值失败:', error);
     res.status(500).json(generateResponse(false, null, '获取亲密值失败'));
   }
 });
