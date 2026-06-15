@@ -50,6 +50,11 @@
           <span class="action-text">我的好友</span>
           <van-icon name="arrow" size="14" color="#ccc" />
         </div>
+        <div class="action-item" @click="goToBlacklist">
+          <van-icon name="shield-o" size="20" color="#ee0a24" />
+          <span class="action-text">黑名单</span>
+          <van-icon name="arrow" size="14" color="#ccc" />
+        </div>
       </div>
 
       <van-button
@@ -145,6 +150,7 @@ function goToShop() { router.push('/shop'); }
 function goToBackpack() { router.push('/backpack'); }
 function goToGifts() { router.push('/gifts'); }
 function goToFriends() { router.push('/friends'); }
+function goToBlacklist() { router.push('/blacklist'); }
 function goToMy() { router.push('/my'); }
 </script>
 

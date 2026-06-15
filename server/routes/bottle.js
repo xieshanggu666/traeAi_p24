@@ -7,6 +7,7 @@ const { generateUUID, generateResponse } = require('../utils/helper');
 const { OPERATION_TYPES, logOperation } = require('../utils/bottleLogger');
 const { BOTTLE_EXPIRE_DAYS, MAX_PICK_COUNT } = require('../utils/bottleScheduler');
 const { getUserActiveSkin, getSkinById } = require('./shop');
+const { hasBlocked, isBlockedBy } = require('./user');
 
 const DAILY_LIMIT = 20;
 const RECALL_TIME_LIMIT_MINUTES = 5;
@@ -207,9 +208,15 @@ router.post('/throw', async (req, res) => {
   }
 });
 
-function buildFilterQuery(filters, pickerId, isCount = false, pickerInfo = null) {
+function buildFilterQuery(filters, pickerId, isCount = false, pickerInfo = null, blacklistIds = []) {
   const conditions = ['b.status = ?', 'b.sender_id != ?', 'b.is_deleted = 0', 'b.pick_count < ?'];
   const params = ['floating', pickerId, MAX_PICK_COUNT];
+
+  if (blacklistIds.length > 0) {
+    const placeholders = blacklistIds.map(() => '?').join(',');
+    conditions.push(`b.sender_id NOT IN (${placeholders})`);
+    params.push(...blacklistIds);
+  }
 
   if (pickerInfo) {
     if (pickerInfo.gender) {
@@ -317,6 +324,21 @@ async function getPickerInfo(pickerId) {
   };
 }
 
+async function getBlacklistUserIds(userId) {
+  const blockedIds = [];
+  const [blockedByMe] = await pool.execute(
+    'SELECT blocked_user_id FROM blacklists WHERE user_id = ?',
+    [userId]
+  );
+  const [whoBlockedMe] = await pool.execute(
+    'SELECT user_id FROM blacklists WHERE blocked_user_id = ?',
+    [userId]
+  );
+  blockedByMe.forEach(r => blockedIds.push(r.blocked_user_id));
+  whoBlockedMe.forEach(r => blockedIds.push(r.user_id));
+  return blockedIds;
+}
+
 async function hasPickedBottle(bottleId, pickerId, conn) {
   const db = conn || pool;
   const [rows] = await db.execute(
@@ -332,7 +354,8 @@ router.post('/pick/count', async (req, res) => {
     const filters = req.body || {};
 
     const pickerInfo = await getPickerInfo(pickerId);
-    const { query, params } = buildFilterQuery(filters, pickerId, true, pickerInfo);
+    const blacklistIds = await getBlacklistUserIds(pickerId);
+    const { query, params } = buildFilterQuery(filters, pickerId, true, pickerInfo, blacklistIds);
     const [result] = await pool.execute(query, params);
 
     res.json(generateResponse(true, {
@@ -344,7 +367,7 @@ router.post('/pick/count', async (req, res) => {
   }
 });
 
-async function getPinnedBottles(filters, pickerId, pickerInfo) {
+async function getPinnedBottles(filters, pickerId, pickerInfo, blacklistIds = []) {
   const conditions = [
     'b.status = ?', 
     'b.sender_id != ?', 
@@ -353,6 +376,12 @@ async function getPinnedBottles(filters, pickerId, pickerInfo) {
     'b.pick_count < ?'
   ];
   const params = ['floating', pickerId, MAX_PICK_COUNT];
+
+  if (blacklistIds.length > 0) {
+    const placeholders = blacklistIds.map(() => '?').join(',');
+    conditions.push(`b.sender_id NOT IN (${placeholders})`);
+    params.push(...blacklistIds);
+  }
 
   if (pickerInfo) {
     if (pickerInfo.gender) {
@@ -414,11 +443,12 @@ router.post('/pick', async (req, res) => {
     }
 
     const pickerInfo = await getPickerInfo(pickerId);
+    const blacklistIds = await getBlacklistUserIds(pickerId);
 
     let bottle = null;
     let isPinned = false;
 
-    const pinnedBottles = await getPinnedBottles(filters, pickerId, pickerInfo);
+    const pinnedBottles = await getPinnedBottles(filters, pickerId, pickerInfo, blacklistIds);
     
     const availablePinnedBottles = [];
     for (const pb of pinnedBottles) {
@@ -433,7 +463,7 @@ router.post('/pick', async (req, res) => {
       bottle = availablePinnedBottles[randomIndex];
       isPinned = true;
     } else {
-      const { query, params } = buildFilterQuery(filters, pickerId, false, pickerInfo);
+      const { query, params } = buildFilterQuery(filters, pickerId, false, pickerInfo, blacklistIds);
       const fullQuery = `${query} ORDER BY RAND() LIMIT 1`;
 
       const [floatingBottles] = await conn.execute(fullQuery, params);
@@ -571,6 +601,19 @@ router.post('/reply', async (req, res) => {
 
     const bottle = bottleRows[0];
     const senderId = bottle.sender_id;
+
+    const blockedBySender = await isBlockedBy(pickerId, senderId);
+    const iBlockedSender = await hasBlocked(pickerId, senderId);
+
+    if (iBlockedSender) {
+      await conn.rollback();
+      return res.status(403).json(generateResponse(false, null, '您已拉黑对方，无法回复'));
+    }
+
+    if (blockedBySender) {
+      await conn.rollback();
+      return res.status(403).json(generateResponse(false, null, '对方已拒收您的消息'));
+    }
 
     if (bottle.picker_id && bottle.picker_id !== pickerId) {
       await conn.rollback();

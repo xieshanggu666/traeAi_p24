@@ -66,8 +66,15 @@ export const getMessages = (bottleId) => {
   return request.get(`/message/${bottleId}`);
 };
 
-export const sendMessage = (bottleId, receiverId, content) => {
-  return request.post('/message/send', { bottleId, receiverId, content });
+export const sendMessage = (bottleId, receiverId, content, imageUrl, type) => {
+  return request.post('/message/send', { bottleId, receiverId, content, imageUrl, type });
+};
+
+export const uploadMessageImage = (formData) => {
+  return request.post('/message/upload-image', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: 30000
+  });
 };
 
 export const getUnreadCount = () => {
@@ -236,4 +243,20 @@ export const getMySkins = () => {
 
 export const useSkin = (skinId) => {
   return request.post('/shop/skins/use', { skinId });
+};
+
+export const blockUser = (blockedUserId) => {
+  return request.post(`/user/blacklist/${blockedUserId}`);
+};
+
+export const unblockUser = (blockedUserId) => {
+  return request.delete(`/user/blacklist/${blockedUserId}`);
+};
+
+export const getBlacklist = () => {
+  return request.get('/user/blacklist');
+};
+
+export const checkBlockStatus = (otherUserId) => {
+  return request.get(`/user/blacklist/check/${otherUserId}`);
 };

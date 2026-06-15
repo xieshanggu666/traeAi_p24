@@ -32,6 +32,22 @@ const upload = multer({
 
 const JWT_SECRET = process.env.JWT_SECRET || 'drift_bottle_secret';
 
+async function isBlockedBy(userId, targetUserId) {
+  const [rows] = await pool.execute(
+    'SELECT id FROM blacklists WHERE user_id = ? AND blocked_user_id = ?',
+    [targetUserId, userId]
+  );
+  return rows.length > 0;
+}
+
+async function hasBlocked(userId, targetUserId) {
+  const [rows] = await pool.execute(
+    'SELECT id FROM blacklists WHERE user_id = ? AND blocked_user_id = ?',
+    [userId, targetUserId]
+  );
+  return rows.length > 0;
+}
+
 function authenticateToken(req, res, next) {
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1];
@@ -338,6 +354,11 @@ router.get('/profile/:userId', authenticateToken, async (req, res) => {
     );
     user.hasReceivedRequest = receivedRequestRows.length > 0;
 
+    const iBlocked = await hasBlocked(currentUserId, userId);
+    const blockedMe = await isBlockedBy(currentUserId, userId);
+    user.iBlocked = iBlocked;
+    user.blockedMe = blockedMe;
+
     res.json(generateResponse(true, user, '获取用户信息成功'));
   } catch (error) {
     console.error('获取用户信息失败:', error);
@@ -587,4 +608,99 @@ router.delete('/friend/:friendId', authenticateToken, async (req, res) => {
   }
 });
 
-module.exports = { router, authenticateToken };
+router.post('/blacklist/:blockedUserId', authenticateToken, async (req, res) => {
+  try {
+    const { blockedUserId } = req.params;
+    const userId = req.user.userId;
+
+    if (!blockedUserId) {
+      return res.status(400).json(generateResponse(false, null, '被拉黑用户ID不能为空'));
+    }
+
+    if (blockedUserId === userId) {
+      return res.status(400).json(generateResponse(false, null, '不能拉黑自己'));
+    }
+
+    const [users] = await pool.execute(
+      'SELECT id FROM users WHERE id = ?',
+      [blockedUserId]
+    );
+
+    if (users.length === 0) {
+      return res.status(404).json(generateResponse(false, null, '用户不存在'));
+    }
+
+    const id = generateUUID();
+    await pool.execute(
+      'INSERT IGNORE INTO blacklists (id, user_id, blocked_user_id) VALUES (?, ?, ?)',
+      [id, userId, blockedUserId]
+    );
+
+    res.json(generateResponse(true, null, '拉黑成功'));
+  } catch (error) {
+    console.error('拉黑用户失败:', error);
+    res.status(500).json(generateResponse(false, null, '拉黑失败'));
+  }
+});
+
+router.delete('/blacklist/:blockedUserId', authenticateToken, async (req, res) => {
+  try {
+    const { blockedUserId } = req.params;
+    const userId = req.user.userId;
+
+    if (!blockedUserId) {
+      return res.status(400).json(generateResponse(false, null, '用户ID不能为空'));
+    }
+
+    await pool.execute(
+      'DELETE FROM blacklists WHERE user_id = ? AND blocked_user_id = ?',
+      [userId, blockedUserId]
+    );
+
+    res.json(generateResponse(true, null, '已解除拉黑'));
+  } catch (error) {
+    console.error('解除拉黑失败:', error);
+    res.status(500).json(generateResponse(false, null, '解除拉黑失败'));
+  }
+});
+
+router.get('/blacklist', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+
+    const [blacklist] = await pool.execute(
+      `SELECT b.id as record_id, b.created_at as blocked_at,
+              u.id, u.username, u.nickname, u.avatar, u.gender, u.birthday, u.bio, u.last_active_at
+       FROM blacklists b
+       INNER JOIN users u ON b.blocked_user_id = u.id
+       WHERE b.user_id = ?
+       ORDER BY b.created_at DESC`,
+      [userId]
+    );
+
+    res.json(generateResponse(true, blacklist, '获取黑名单成功'));
+  } catch (error) {
+    console.error('获取黑名单失败:', error);
+    res.status(500).json(generateResponse(false, null, '获取黑名单失败'));
+  }
+});
+
+router.get('/blacklist/check/:otherUserId', authenticateToken, async (req, res) => {
+  try {
+    const { otherUserId } = req.params;
+    const userId = req.user.userId;
+
+    const iBlocked = await hasBlocked(userId, otherUserId);
+    const blockedMe = await isBlockedBy(userId, otherUserId);
+
+    res.json(generateResponse(true, {
+      iBlocked,
+      blockedMe
+    }, '获取成功'));
+  } catch (error) {
+    console.error('检查拉黑状态失败:', error);
+    res.status(500).json(generateResponse(false, null, '检查失败'));
+  }
+});
+
+module.exports = { router, authenticateToken, isBlockedBy, hasBlocked };

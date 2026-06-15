@@ -14,6 +14,7 @@ const pool = require('./config/db');
 const { generateUUID } = require('./utils/helper');
 const { migrateSkins } = require('./config/migrateSkins');
 const { migrateMessageAdvanced } = require('./config/migrateMessageAdvanced');
+const { migrateBlacklistAndMessageFeatures } = require('./config/migrateBlacklist');
 
 async function ensureUserIntimacyTable() {
   try {
@@ -152,6 +153,12 @@ app.listen(PORT, async () => {
     await migrateMessageAdvanced();
   } catch (error) {
     console.error('消息高级功能迁移失败，但服务继续运行:', error.message);
+  }
+  
+  try {
+    await migrateBlacklistAndMessageFeatures();
+  } catch (error) {
+    console.error('黑名单和消息图片功能迁移失败，但服务继续运行:', error.message);
   }
   
   startScheduledTasks();

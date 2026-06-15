@@ -34,6 +34,17 @@
       <div class="bottle-info-content">{{ bottleDetail.content }}</div>
     </div>
 
+    <div class="blocked-warning" v-if="iBlocked || blockedMe">
+      <template v-if="iBlocked">
+        <van-icon name="warning-o" size="14" />
+        <span>您已拉黑对方，无法进行任何互动</span>
+      </template>
+      <template v-else-if="blockedMe">
+        <van-icon name="warning-o" size="14" />
+        <span>对方已拉黑您，消息将被拒收</span>
+      </template>
+    </div>
+
     <div class="message-list" ref="messageListRef">
       <div 
         class="message-item" 
@@ -52,7 +63,7 @@
           <div v-if="msg.is_recalled" class="recalled-message recalled-other recalled-center">
             <span class="recalled-text">对方撤回了一条消息</span>
           </div>
-          <div v-else class="message-bubble" :class="{ 'gift-bubble': isGiftMessage(msg) }">
+          <div v-else class="message-bubble" :class="{ 'gift-bubble': isGiftMessage(msg), 'image-bubble': isImageMessage(msg) }">
             <template v-if="isGiftMessage(msg)">
               <div class="gift-message">
                 <div class="gift-label">🎁 赠送了礼物</div>
@@ -65,6 +76,9 @@
                 </div>
               </div>
             </template>
+            <template v-else-if="isImageMessage(msg)">
+              <img :src="msg.image_url || msg.content" class="message-image" @click="previewImage(msg.image_url || msg.content)" />
+            </template>
             <template v-else>
               <div class="message-content">{{ msg.content }}</div>
             </template>
@@ -76,9 +90,13 @@
             <span class="recalled-text">你撤回了一条消息</span>
           </div>
           <template v-else>
+            <div class="blocked-indicator" v-if="msg.is_blocked">
+              <van-icon name="warning" size="16" class="blocked-icon" />
+              <span class="blocked-tip">对方拒收</span>
+            </div>
             <div 
               class="message-bubble" 
-              :class="{ 'gift-bubble-mine': isGiftMessage(msg), 'bubble-contextmenu': contextMenuMsgId === msg.id }"
+              :class="{ 'gift-bubble-mine': isGiftMessage(msg), 'bubble-contextmenu': contextMenuMsgId === msg.id, 'image-bubble-mine': isImageMessage(msg), 'msg-blocked': msg.is_blocked }"
               @contextmenu.prevent="showContextMenu($event, msg)"
               @longpress="handleLongPress(msg)"
             >
@@ -94,12 +112,15 @@
                   </div>
                 </div>
               </template>
+              <template v-else-if="isImageMessage(msg)">
+                <img :src="msg.image_url || msg.content" class="message-image" @click="previewImage(msg.image_url || msg.content)" />
+              </template>
               <template v-else>
                 <div class="message-content">{{ msg.content }}</div>
               </template>
               <div class="message-footer">
                 <div class="message-time">{{ formatTime(msg.created_at) }}</div>
-                <div class="message-read-status" :class="{ 'read': msg.is_read }">
+                <div class="message-read-status" :class="{ 'read': msg.is_read }" v-if="!msg.is_blocked">
                   <template v-if="msg.is_read">
                     <span class="read-double-check">
                       <van-icon name="success" size="14" />
@@ -185,24 +206,37 @@
       </div>
     </div>
 
+    <div class="pending-image-panel" v-if="pendingImagePreview">
+      <div class="pending-image-wrap">
+        <img :src="pendingImagePreview" class="pending-image-preview" />
+        <van-loading v-if="isUploadingImage" class="pending-image-loading" color="#667eea">上传中...</van-loading>
+        <div class="pending-image-remove" @click="removePendingImage" v-if="!isUploadingImage">
+          <van-icon name="cross" size="14" />
+        </div>
+      </div>
+    </div>
+
     <div class="input-area">
-      <div class="gift-btn" @click="showGiftPanel = true">
+      <div class="image-btn" @click="triggerImageSelect" :class="{ disabled: iBlocked || blockedMe }">
+        <van-icon name="photograph" size="24" color="#667eea" />
+      </div>
+      <div class="gift-btn" @click="showGiftPanel = true" :class="{ disabled: iBlocked || blockedMe }">
         <van-icon name="gift-o" size="24" color="#667eea" />
       </div>
-      <div class="quick-reply-chat-btn" @click="showQuickReply = !showQuickReply" :class="{ active: showQuickReply }">
+      <div class="quick-reply-chat-btn" @click="showQuickReply = !showQuickReply" :class="{ active: showQuickReply, disabled: iBlocked || blockedMe }">
         <van-icon name="chat-o" size="24" color="#667eea" />
       </div>
       <textarea
         v-model="messageContent"
         class="message-input"
-        :placeholder="isConsecutiveLimited ? '等待对方回复...' : '输入消息...'"
+        :placeholder="blockedMe ? '对方已拒收消息...' : (iBlocked ? '您已拉黑对方...' : (isConsecutiveLimited ? '等待对方回复...' : '输入消息...'))"
         rows="1"
         @keydown.enter.exact.prevent="sendMessage"
         @input="onMessageInput"
         @focus="showQuickReply = false; handleTypingInput()"
         @blur="sendTypingStatus(false)"
         ref="textareaRef"
-        :disabled="isConsecutiveLimited"
+        :disabled="isConsecutiveLimited || iBlocked || blockedMe"
       ></textarea>
       <van-button
         type="primary"
@@ -293,19 +327,50 @@
           <div class="profile-value">{{ formatProfileDate(profileUser.created_at) }}</div>
         </div>
         <div class="profile-footer" v-if="!isProfileSelf && otherUserId === profileUser.id">
-          <van-button
-            type="primary"
-            block
-            round
-            :disabled="isFriend || hasPendingRequest || intimacyValue < 100"
-            :loading="addingFriend"
-            @click="handleAddFriend"
-          >
-            <template v-if="isFriend">已是好友</template>
-            <template v-else-if="hasPendingRequest">已发送申请</template>
-            <template v-else-if="intimacyValue < 100">亲密度需≥100 ({{ intimacyValue }}/100)</template>
-            <template v-else>添加好友</template>
-          </van-button>
+          <div class="profile-footer-btns">
+            <van-button
+              v-if="!profileUser.iBlocked"
+              type="danger"
+              plain
+              block
+              round
+              :loading="blockingUser"
+              class="block-btn"
+              @click="handleBlockUser"
+            >
+              <van-icon name="shield-o" size="14" />
+              <span>拉黑对方</span>
+            </van-button>
+            <van-button
+              v-else
+              type="success"
+              plain
+              block
+              round
+              :loading="blockingUser"
+              class="block-btn"
+              @click="handleUnblockUser"
+            >
+              <van-icon name="passed" size="14" />
+              <span>解除拉黑</span>
+            </van-button>
+            <van-button
+              type="primary"
+              block
+              round
+              :disabled="isFriend || hasPendingRequest || intimacyValue < 100 || profileUser.iBlocked || profileUser.blockedMe"
+              :loading="addingFriend"
+              @click="handleAddFriend"
+              class="add-friend-footer-btn"
+            >
+              <template v-if="isFriend">已是好友</template>
+              <template v-else-if="hasPendingRequest">已发送申请</template>
+              <template v-else-if="profileUser.iBlocked">您已拉黑对方</template>
+              <template v-else-if="profileUser.blockedMe">对方已拉黑您</template>
+              <template v-else-if="intimacyValue < 100">亲密度需≥100 ({{ intimacyValue }}/100)</template>
+              <template v-else>添加好友</template>
+            </van-button>
+          </div>
         </div>
         <div class="profile-footer" v-else-if="isProfileSelf">
           <div class="self-hint">这是你自己</div>
@@ -342,7 +407,7 @@ import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { showToast, showDialog } from 'vant';
 import { getUser } from '../utils/storage';
-import { getMessages, sendMessage as apiSendMessage, getBottleDetail, getBackpackItems, sendChatGift, getIntimacy, getUserIntimacy, getUserProfile, sendFriendRequest, recallMessage, updateTypingStatus, getTypingStatus } from '../api';
+import { getMessages, sendMessage as apiSendMessage, getBottleDetail, getBackpackItems, sendChatGift, getIntimacy, getUserIntimacy, getUserProfile, sendFriendRequest, recallMessage, updateTypingStatus, getTypingStatus, uploadMessageImage, blockUser, unblockUser, checkBlockStatus } from '../api';
 import AvatarDisplay from '../components/AvatarDisplay.vue';
 
 const route = useRoute();
@@ -381,6 +446,11 @@ const contextMenuMsgId = ref(null);
 const contextMenuPos = ref({ top: 0, left: 0 });
 const selectedMessage = ref(null);
 const otherIsTyping = ref(false);
+const iBlocked = ref(false);
+const blockedMe = ref(false);
+const isUploadingImage = ref(false);
+const imageFileInput = ref(null);
+const blockingUser = ref(false);
 let typingTimer = null;
 let typingSendTimer = null;
 let lastTypingSent = false;
@@ -474,8 +544,11 @@ const quickReplyCategories = [
 let timer = null;
 
 const canSend = computed(() => {
-  return messageContent.value.trim().length > 0 && otherUserId.value && !isConsecutiveLimited.value;
+  return (messageContent.value.trim().length > 0 || pendingImageUrl.value) && otherUserId.value && !isConsecutiveLimited.value && !blockedMe.value && !iBlocked.value;
 });
+
+const pendingImageUrl = ref(null);
+const pendingImagePreview = ref(null);
 
 onMounted(() => {
   currentUser.value = getUser();
@@ -522,11 +595,22 @@ async function initChat() {
     };
     otherUserId.value = detail.other_id;
     
-    await Promise.all([fetchMessages(), fetchIntimacy(), fetchFriendStatus()]);
+    await Promise.all([fetchMessages(), fetchIntimacy(), fetchFriendStatus(), fetchBlockStatus()]);
   } catch (error) {
     showToast(error.businessMessage || error.httpMessage || '出现异常');
   } finally {
     loading.value = false;
+  }
+}
+
+async function fetchBlockStatus() {
+  if (!otherUserId.value) return;
+  try {
+    const result = await checkBlockStatus(otherUserId.value);
+    iBlocked.value = result.iBlocked || false;
+    blockedMe.value = result.blockedMe || false;
+  } catch (error) {
+    console.error('获取拉黑状态失败:', error);
   }
 }
 
@@ -668,11 +752,19 @@ async function sendMessage() {
     const result = await apiSendMessage(
       bottleId,
       otherUserId.value,
-      messageContent.value
+      messageContent.value,
+      pendingImageUrl.value,
+      pendingImageUrl.value && !messageContent.value.trim() ? 'image' : 'text'
     );
     messages.value.push(result);
-    intimacyValue.value += 1;
+    if (!result.is_blocked) {
+      intimacyValue.value += 1;
+    } else {
+      showToast('对方已拒收您的消息');
+    }
     messageContent.value = '';
+    pendingImageUrl.value = null;
+    pendingImagePreview.value = null;
     resetTextareaHeight();
     scrollToBottom();
   } catch (error) {
@@ -680,6 +772,71 @@ async function sendMessage() {
   } finally {
     isSending.value = false;
   }
+}
+
+function triggerImageSelect() {
+  if (iBlocked.value) {
+    showToast('您已拉黑对方，无法互动');
+    return;
+  }
+  if (blockedMe.value) {
+    showToast('对方已拉黑您，无法互动');
+    return;
+  }
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = 'image/*';
+  input.onchange = handleImageSelect;
+  input.click();
+}
+
+async function handleImageSelect(e) {
+  const file = e.target.files?.[0];
+  if (!file) return;
+
+  if (file.size > 5 * 1024 * 1024) {
+    showToast('图片大小不能超过5MB');
+    return;
+  }
+
+  const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+  if (!allowedTypes.includes(file.type)) {
+    showToast('只支持 JPG、PNG、GIF、WebP 格式的图片');
+    return;
+  }
+
+  isUploadingImage.value = true;
+
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    pendingImagePreview.value = ev.target.result;
+  };
+  reader.readAsDataURL(file);
+
+  try {
+    const formData = new FormData();
+    formData.append('image', file);
+    const result = await uploadMessageImage(formData);
+    pendingImageUrl.value = result.imageUrl;
+  } catch (error) {
+    showToast(error.businessMessage || error.httpMessage || '图片上传失败');
+    pendingImagePreview.value = null;
+    pendingImageUrl.value = null;
+  } finally {
+    isUploadingImage.value = false;
+  }
+}
+
+function removePendingImage() {
+  pendingImageUrl.value = null;
+  pendingImagePreview.value = null;
+}
+
+function isImageMessage(msg) {
+  if (!msg) return false;
+  if (msg.type === 'image') return true;
+  if (msg.image_url && !msg.content) return true;
+  return false;
 }
 
 function formatTime(time) {
@@ -876,6 +1033,62 @@ function formatProfileDate(time) {
   const m = (date.getMonth() + 1).toString().padStart(2, '0');
   const d = date.getDate().toString().padStart(2, '0');
   return `${y}-${m}-${d}`;
+}
+
+async function handleBlockUser() {
+  if (!otherUserId.value) return;
+  try {
+    await showDialog({
+      title: '确认拉黑',
+      message: `确定要拉黑「${otherUser.value?.nickname || '对方'}」吗？\n拉黑后将无法进行任何互动。`,
+      showCancelButton: true,
+      confirmButtonText: '确认拉黑',
+      cancelButtonText: '取消',
+      confirmButtonColor: '#ee0a24'
+    });
+  } catch {
+    return;
+  }
+  try {
+    blockingUser.value = true;
+    await blockUser(otherUserId.value);
+    iBlocked.value = true;
+    if (profileUser.value && profileUser.value.id === otherUserId.value) {
+      profileUser.value.iBlocked = true;
+    }
+    showToast('已拉黑对方');
+    showProfilePopup.value = false;
+  } catch (error) {
+    showToast(error.businessMessage || error.httpMessage || '拉黑失败');
+  } finally {
+    blockingUser.value = false;
+  }
+}
+
+async function handleUnblockUser() {
+  if (!otherUserId.value) return;
+  try {
+    blockingUser.value = true;
+    await unblockUser(otherUserId.value);
+    iBlocked.value = false;
+    if (profileUser.value && profileUser.value.id === otherUserId.value) {
+      profileUser.value.iBlocked = false;
+    }
+    showToast('已解除拉黑');
+  } catch (error) {
+    showToast(error.businessMessage || error.httpMessage || '解除拉黑失败');
+  } finally {
+    blockingUser.value = false;
+  }
+}
+
+function previewImage(src) {
+  if (!src) return;
+  const fullSrc = src.startsWith('http') || src.startsWith('data:') ? src : src;
+  const imgWindow = window.open('', '_blank');
+  if (imgWindow) {
+    imgWindow.document.write(`<img src="${fullSrc}" style="max-width:100%;display:block;margin:auto;" />`);
+  }
 }
 </script>
 
@@ -1720,5 +1933,161 @@ function formatProfileDate(time) {
   font-size: 11px;
   color: #ccc;
   margin-left: 4px;
+}
+
+.blocked-warning {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 10px 16px;
+  margin: 8px 16px;
+  background: linear-gradient(135deg, #fff1f0 0%, #ffccc7 100%);
+  border-radius: 10px;
+  font-size: 12px;
+  color: #cf1322;
+  text-align: center;
+}
+
+.pending-image-panel {
+  padding: 8px 16px;
+  background: #fff;
+  border-top: 1px solid #f0f0f0;
+}
+
+.pending-image-wrap {
+  position: relative;
+  display: inline-block;
+}
+
+.pending-image-preview {
+  width: 80px;
+  height: 80px;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 1px solid #eee;
+}
+
+.pending-image-loading {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.8);
+  border-radius: 8px;
+  font-size: 12px;
+}
+
+.pending-image-remove {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  width: 20px;
+  height: 20px;
+  background: #ff4d4f;
+  color: #fff;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.image-btn {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: #f5f5f5;
+  cursor: pointer;
+  transition: background 0.2s;
+  flex-shrink: 0;
+}
+
+.image-btn:active {
+  background: #e8e8e8;
+}
+
+.image-btn.disabled,
+.gift-btn.disabled,
+.quick-reply-chat-btn.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.message-image {
+  max-width: 200px;
+  max-height: 260px;
+  border-radius: 12px;
+  cursor: pointer;
+  display: block;
+}
+
+.image-bubble .message-content,
+.image-bubble-mine .message-content {
+  padding: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.is-mine .image-bubble-mine .message-image {
+  border: 2px solid #667eea;
+}
+
+.image-bubble .message-image {
+  border: 2px solid #fff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.blocked-indicator {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-right: 6px;
+  font-size: 12px;
+  color: #ff4d4f;
+  flex-shrink: 0;
+  align-self: flex-end;
+  margin-bottom: 4px;
+}
+
+.blocked-icon {
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+.message-item.is-mine {
+  flex-direction: row;
+}
+
+.msg-blocked {
+  opacity: 0.85;
+}
+
+.profile-footer-btns {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.block-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.add-friend-footer-btn {
+  margin-top: 0 !important;
 }
 </style>

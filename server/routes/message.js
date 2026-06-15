@@ -1,7 +1,33 @@
 const express = require('express');
 const router = express.Router();
+const multer = require('multer');
+const path = require('path');
 const pool = require('../config/db');
 const { generateUUID, generateResponse } = require('../utils/helper');
+const { isBlockedBy, hasBlocked } = require('./user');
+
+const messageImageStorage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, path.join(__dirname, '..', 'uploads', 'messages'));
+  },
+  filename: function (req, file, cb) {
+    const ext = path.extname(file.originalname);
+    cb(null, `${req.user.userId}-${Date.now()}${ext}`);
+  }
+});
+
+const messageImageUpload = multer({
+  storage: messageImageStorage,
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: function (req, file, cb) {
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+    if (allowedTypes.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('只支持 JPG、PNG、GIF、WebP 格式的图片'));
+    }
+  }
+});
 
 let hasTypeColumn = null;
 
@@ -27,6 +53,32 @@ async function checkRecalledColumn() {
     hasRecalledColumn = false;
   }
   return hasRecalledColumn;
+}
+
+let hasImageUrlColumn = null;
+
+async function checkImageUrlColumn() {
+  if (hasImageUrlColumn !== null) return hasImageUrlColumn;
+  try {
+    await pool.execute('SELECT image_url FROM messages LIMIT 0');
+    hasImageUrlColumn = true;
+  } catch {
+    hasImageUrlColumn = false;
+  }
+  return hasImageUrlColumn;
+}
+
+let hasIsBlockedColumn = null;
+
+async function checkIsBlockedColumn() {
+  if (hasIsBlockedColumn !== null) return hasIsBlockedColumn;
+  try {
+    await pool.execute('SELECT is_blocked FROM messages LIMIT 0');
+    hasIsBlockedColumn = true;
+  } catch {
+    hasIsBlockedColumn = false;
+  }
+  return hasIsBlockedColumn;
 }
 
 let hasTypingStatusTable = null;
@@ -155,11 +207,15 @@ router.get('/:bottleId', async (req, res) => {
 
     const typeCol = await checkTypeColumn();
     const recalledCol = await checkRecalledColumn();
+    const imageUrlCol = await checkImageUrlColumn();
+    const isBlockedCol = await checkIsBlockedColumn();
     const selectType = typeCol ? ', m.type' : '';
     const selectRecalled = recalledCol ? ', m.is_recalled, m.recalled_at' : '';
+    const selectImageUrl = imageUrlCol ? ', m.image_url' : '';
+    const selectIsBlocked = isBlockedCol ? ', m.is_blocked' : '';
 
     let query = 
-      'SELECT m.id, m.bottle_id, m.sender_id, m.receiver_id, m.content' + selectType + ', m.is_read' + selectRecalled + ', m.created_at, ' +
+      'SELECT m.id, m.bottle_id, m.sender_id, m.receiver_id, m.content' + selectImageUrl + selectType + ', m.is_read' + selectRecalled + selectIsBlocked + ', m.created_at, ' +
       'u.nickname as sender_nickname, u.avatar as sender_avatar ' +
       'FROM messages m ' +
       'LEFT JOIN users u ON m.sender_id = u.id ' +
@@ -191,11 +247,21 @@ router.get('/:bottleId', async (req, res) => {
 
 router.post('/send', async (req, res) => {
   try {
-    const { bottleId, receiverId, content } = req.body;
+    const { bottleId, receiverId, content, imageUrl, type } = req.body;
     const senderId = req.user.userId;
 
-    if (!bottleId || !receiverId || !content || content.trim().length === 0) {
+    const hasImage = imageUrl && imageUrl.trim().length > 0;
+    const hasContent = content && content.trim().length > 0;
+
+    if (!bottleId || !receiverId || (!hasContent && !hasImage)) {
       return res.status(400).json(generateResponse(false, null, '参数不完整'));
+    }
+
+    const blocked = await isBlockedBy(senderId, receiverId);
+    const iBlocked = await hasBlocked(senderId, receiverId);
+
+    if (iBlocked) {
+      return res.status(403).json(generateResponse(false, null, '您已拉黑对方，无法发送消息'));
     }
 
     const consecutiveCount = await getConsecutiveCount(bottleId, senderId);
@@ -204,27 +270,49 @@ router.post('/send', async (req, res) => {
     }
 
     const messageId = generateUUID();
-    const type = req.body.type || 'text';
+    const msgType = type || (hasImage && !hasContent ? 'image' : 'text');
     const typeCol = await checkTypeColumn();
+    const imageUrlCol = await checkImageUrlColumn();
+    const isBlockedCol = await checkIsBlockedColumn();
 
+    const finalContent = content ? content.trim() : '';
+    const finalImageUrl = imageUrl ? imageUrl.trim() : null;
+    const isBlocked = blocked ? 1 : 0;
+
+    let insertQuery = 'INSERT INTO messages (id, bottle_id, sender_id, receiver_id, content';
+    let placeholders = '?, ?, ?, ?, ?';
+    const values = [messageId, bottleId, senderId, receiverId, finalContent];
+
+    if (imageUrlCol) {
+      insertQuery += ', image_url';
+      placeholders += ', ?';
+      values.push(finalImageUrl);
+    }
     if (typeCol) {
-      await pool.execute(
-        'INSERT INTO messages (id, bottle_id, sender_id, receiver_id, content, type) VALUES (?, ?, ?, ?, ?, ?)',
-        [messageId, bottleId, senderId, receiverId, content.trim(), type]
-      );
-    } else {
-      await pool.execute(
-        'INSERT INTO messages (id, bottle_id, sender_id, receiver_id, content) VALUES (?, ?, ?, ?, ?)',
-        [messageId, bottleId, senderId, receiverId, content.trim()]
-      );
+      insertQuery += ', type';
+      placeholders += ', ?';
+      values.push(msgType);
+    }
+    if (isBlockedCol) {
+      insertQuery += ', is_blocked';
+      placeholders += ', ?';
+      values.push(isBlocked);
     }
 
-    await addIntimacy(bottleId, 1);
+    insertQuery += `) VALUES (${placeholders})`;
+
+    await pool.execute(insertQuery, values);
+
+    if (!blocked) {
+      await addIntimacy(bottleId, 1);
+    }
 
     const selectType = typeCol ? ', m.type' : '';
     const selectRecalled = (await checkRecalledColumn()) ? ', m.is_recalled, m.recalled_at' : '';
+    const selectImageUrl = imageUrlCol ? ', m.image_url' : '';
+    const selectIsBlocked = isBlockedCol ? ', m.is_blocked' : '';
     const [message] = await pool.execute(
-      'SELECT m.id, m.bottle_id, m.sender_id, m.receiver_id, m.content' + selectType + ', m.is_read' + selectRecalled + ', m.created_at, ' +
+      'SELECT m.id, m.bottle_id, m.sender_id, m.receiver_id, m.content' + selectImageUrl + selectType + ', m.is_read' + selectRecalled + selectIsBlocked + ', m.created_at, ' +
       'u.nickname as sender_nickname, u.avatar as sender_avatar ' +
       'FROM messages m ' +
       'LEFT JOIN users u ON m.sender_id = u.id ' +
@@ -232,11 +320,34 @@ router.post('/send', async (req, res) => {
       [messageId]
     );
 
-    res.json(generateResponse(true, message[0], '消息发送成功'));
+    res.json(generateResponse(true, message[0], blocked ? '对方已拒收您的消息' : '消息发送成功'));
   } catch (error) {
     console.error('发送消息失败:', error);
     res.status(500).json(generateResponse(false, null, '发送消息失败'));
   }
+});
+
+router.post('/upload-image', (req, res) => {
+  messageImageUpload.single('image')(req, res, async function (err) {
+    if (err) {
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(400).json(generateResponse(false, null, '图片大小不能超过5MB'));
+      }
+      return res.status(400).json(generateResponse(false, null, err.message || '上传失败'));
+    }
+
+    if (!req.file) {
+      return res.status(400).json(generateResponse(false, null, '请选择图片'));
+    }
+
+    try {
+      const imageUrl = `/uploads/messages/${req.file.filename}`;
+      res.json(generateResponse(true, { imageUrl }, '图片上传成功'));
+    } catch (error) {
+      console.error('图片上传失败:', error);
+      res.status(500).json(generateResponse(false, null, '图片上传失败'));
+    }
+  });
 });
 
 router.get('/intimacy/:bottleId', async (req, res) => {

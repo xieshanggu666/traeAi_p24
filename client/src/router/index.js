@@ -85,6 +85,12 @@ const routes = [
     name: 'Friends',
     component: () => import('../views/Friends.vue'),
     meta: { title: '好友', requiresAuth: true }
+  },
+  {
+    path: '/blacklist',
+    name: 'Blacklist',
+    component: () => import('../views/Blacklist.vue'),
+    meta: { title: '黑名单', requiresAuth: true }
   }
 ];
 
