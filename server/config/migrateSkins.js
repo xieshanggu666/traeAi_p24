@@ -241,6 +241,19 @@ async function migrateSkins() {
     }
     console.log('默认皮肤数据处理完成');
 
+    console.log('清理不在皮肤列表中的旧记录...');
+    const validSkinIds = SKINS.map(s => s.id);
+    const placeholders = validSkinIds.map(() => '?').join(',');
+    const [deleteResult] = await connection.execute(
+      `DELETE FROM bottle_skins WHERE id NOT IN (${placeholders})`,
+      validSkinIds
+    );
+    if (deleteResult.affectedRows > 0) {
+      console.log(`已清理 ${deleteResult.affectedRows} 条旧皮肤记录`);
+    } else {
+      console.log('无需清理旧皮肤记录');
+    }
+
     await connection.commit();
     console.log('\n✅ 皮肤功能数据库迁移完成！');
     return true;

@@ -21,9 +21,12 @@
         <p>将心事放入瓶中，与陌生人相遇</p>
       </div>
 
-      <div class="bottle-animation">
-        <div class="bottle floating">
-          <span class="bottle-icon">🍾</span>
+      <div class="bottle-animation" :style="bottleAnimBg">
+        <div class="bottle floating" :style="bottleFloatStyle">
+          <span class="bottle-icon">{{ activeSkinEmoji }}</span>
+        </div>
+        <div v-if="activeSkin" class="skin-label" :style="skinLabelStyle">
+          {{ activeSkin.emoji }} {{ activeSkin.name }}
         </div>
       </div>
 
@@ -66,22 +69,50 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { getUser } from '../utils/storage';
-import { getUnreadCount } from '../api';
+import { getUnreadCount, getMySkins } from '../api';
 import AvatarDisplay from '../components/AvatarDisplay.vue';
 
 const router = useRouter();
 const user = ref(null);
 const unreadCount = ref(0);
 const active = ref('home');
+const activeSkin = ref(null);
 let timer = null;
 
 const shortUserId = computed(() => {
   return user.value?.id ? user.value.id.slice(0, 8) : '';
 });
 
+const activeSkinEmoji = computed(() => {
+  return activeSkin.value?.emoji || '🍾';
+});
+
+const bottleFloatStyle = computed(() => {
+  if (!activeSkin.value) return {};
+  return {
+    filter: `drop-shadow(0 6px 16px ${activeSkin.value.border_color}88)`
+  };
+});
+
+const bottleAnimBg = computed(() => {
+  if (!activeSkin.value) return {};
+  return {
+    background: `radial-gradient(ellipse at center, ${activeSkin.value.gradient_from}20 0%, transparent 70%)`
+  };
+});
+
+const skinLabelStyle = computed(() => {
+  if (!activeSkin.value) return {};
+  return {
+    background: `linear-gradient(135deg, ${activeSkin.value.gradient_from}dd 0%, ${activeSkin.value.gradient_to}dd 100%)`,
+    borderColor: activeSkin.value.border_color
+  };
+});
+
 onMounted(() => {
   user.value = getUser();
   fetchUnreadCount();
+  fetchMySkin();
   timer = setInterval(fetchUnreadCount, 10000);
 });
 
@@ -95,6 +126,15 @@ async function fetchUnreadCount() {
     unreadCount.value = result.unreadCount;
   } catch (error) {
     console.error('获取未读消息数失败:', error);
+  }
+}
+
+async function fetchMySkin() {
+  try {
+    const result = await getMySkins();
+    activeSkin.value = result.activeSkin;
+  } catch (error) {
+    console.error('获取用户皮肤失败:', error);
   }
 }
 
@@ -174,6 +214,8 @@ function goToMessages() {
 
 .bottle-animation {
   display: flex;
+  flex-direction: column;
+  align-items: center;
   justify-content: center;
   margin: 30px 0;
   height: 150px;
@@ -182,6 +224,17 @@ function goToMessages() {
 .bottle {
   font-size: 80px;
   animation: float 3s ease-in-out infinite;
+}
+
+.skin-label {
+  margin-top: 8px;
+  padding: 3px 12px;
+  border-radius: 16px;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 500;
+  border: 1px solid;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
 }
 
 @keyframes float {
