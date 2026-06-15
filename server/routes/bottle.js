@@ -459,8 +459,8 @@ router.post('/pick', async (req, res) => {
     );
 
     const [updatedBottle] = await conn.execute(
-      'UPDATE bottles SET pick_count = pick_count + 1 WHERE id = ?',
-      [bottle.id]
+      'UPDATE bottles SET pick_count = pick_count + 1, picker_id = ?, picked_at = NOW(), status = ? WHERE id = ?',
+      [pickerId, 'picked', bottle.id]
     );
 
     await conn.execute(
@@ -560,7 +560,7 @@ router.post('/reply', async (req, res) => {
     }
 
     const [bottleRows] = await conn.execute(
-      'SELECT sender_id, status FROM bottles WHERE id = ? AND is_deleted = 0',
+      'SELECT sender_id, status, picker_id FROM bottles WHERE id = ? AND is_deleted = 0',
       [bottleId]
     );
 
@@ -569,11 +569,23 @@ router.post('/reply', async (req, res) => {
       return res.status(404).json(generateResponse(false, null, '瓶子不存在'));
     }
 
-    const senderId = bottleRows[0].sender_id;
+    const bottle = bottleRows[0];
+    const senderId = bottle.sender_id;
+
+    if (bottle.picker_id && bottle.picker_id !== pickerId) {
+      await conn.rollback();
+      return res.status(403).json(generateResponse(false, null, '无权回复此瓶子'));
+    }
+
+    const hasPicked = await hasPickedBottle(bottleId, pickerId, conn);
+    if (!hasPicked && !bottle.picker_id) {
+      await conn.rollback();
+      return res.status(403).json(generateResponse(false, null, '请先捞取该瓶子'));
+    }
 
     await conn.execute(
-      'UPDATE bottles SET status = ? WHERE id = ?',
-      ['replied', bottleId]
+      'UPDATE bottles SET status = ?, picker_id = IFNULL(picker_id, ?), picked_at = IFNULL(picked_at, NOW()) WHERE id = ?',
+      ['replied', pickerId, bottleId]
     );
 
     const messageId = generateUUID();
