@@ -41,9 +41,15 @@
         :key="msg.id"
         :class="{ 'is-mine': msg.sender_id === currentUserId }"
       >
-        <AvatarDisplay :avatar="otherUser?.avatar || msg.sender_avatar" :size="36" class="message-avatar clickable-avatar" v-if="msg.sender_id !== currentUserId" @click="showUserProfile(otherUserId)" />
+        <AvatarDisplay 
+          :avatar="otherUser?.avatar || msg.sender_avatar" 
+          :size="36" 
+          class="message-avatar clickable-avatar" 
+          v-if="msg.sender_id !== currentUserId && !msg.is_recalled" 
+          @click="showUserProfile(otherUserId)" 
+        />
         <template v-if="msg.sender_id !== currentUserId">
-          <div v-if="msg.is_recalled" class="recalled-message recalled-other">
+          <div v-if="msg.is_recalled" class="recalled-message recalled-other recalled-center">
             <span class="recalled-text">对方撤回了一条消息</span>
           </div>
           <div v-else class="message-bubble" :class="{ 'gift-bubble': isGiftMessage(msg) }">
@@ -66,44 +72,48 @@
           </div>
         </template>
         <template v-else>
-          <div v-if="msg.is_recalled" class="recalled-message recalled-mine">
+          <div v-if="msg.is_recalled" class="recalled-message recalled-mine recalled-center">
             <span class="recalled-text">你撤回了一条消息</span>
           </div>
-          <div 
-            v-else 
-            class="message-bubble" 
-            :class="{ 'gift-bubble-mine': isGiftMessage(msg), 'bubble-contextmenu': contextMenuMsgId === msg.id }"
-            @contextmenu.prevent="showContextMenu($event, msg)"
-            @longpress="handleLongPress(msg)"
-          >
-            <template v-if="isGiftMessage(msg)">
-              <div class="gift-message">
-                <div class="gift-label">🎁 赠送了礼物</div>
-                <div class="gift-content">
-                  <span class="gift-icon">{{ parseGiftContent(msg.content).giftIcon }}</span>
-                  <div class="gift-info">
-                    <div class="gift-name">{{ parseGiftContent(msg.content).giftName }}</div>
-                    <div class="gift-charm">魅力值 +{{ parseGiftContent(msg.content).charmValue }}</div>
+          <template v-else>
+            <div 
+              class="message-bubble" 
+              :class="{ 'gift-bubble-mine': isGiftMessage(msg), 'bubble-contextmenu': contextMenuMsgId === msg.id }"
+              @contextmenu.prevent="showContextMenu($event, msg)"
+              @longpress="handleLongPress(msg)"
+            >
+              <template v-if="isGiftMessage(msg)">
+                <div class="gift-message">
+                  <div class="gift-label">🎁 赠送了礼物</div>
+                  <div class="gift-content">
+                    <span class="gift-icon">{{ parseGiftContent(msg.content).giftIcon }}</span>
+                    <div class="gift-info">
+                      <div class="gift-name">{{ parseGiftContent(msg.content).giftName }}</div>
+                      <div class="gift-charm">魅力值 +{{ parseGiftContent(msg.content).charmValue }}</div>
+                    </div>
                   </div>
                 </div>
-              </div>
-            </template>
-            <template v-else>
-              <div class="message-content">{{ msg.content }}</div>
-            </template>
-            <div class="message-footer">
-              <div class="message-time">{{ formatTime(msg.created_at) }}</div>
-              <div class="message-read-status" :class="{ 'read': msg.is_read }">
-                <template v-if="msg.is_read">
-                  <van-icon name="success" size="14" class="read-icon-double" />
-                </template>
-                <template v-else>
-                  <van-icon name="checked" size="14" class="read-icon-single" />
-                </template>
+              </template>
+              <template v-else>
+                <div class="message-content">{{ msg.content }}</div>
+              </template>
+              <div class="message-footer">
+                <div class="message-time">{{ formatTime(msg.created_at) }}</div>
+                <div class="message-read-status" :class="{ 'read': msg.is_read }">
+                  <template v-if="msg.is_read">
+                    <span class="read-double-check">
+                      <van-icon name="success" size="14" />
+                      <van-icon name="success" size="14" class="double-second" />
+                    </span>
+                  </template>
+                  <template v-else>
+                    <van-icon name="checked" size="14" class="read-icon-single" />
+                  </template>
+                </div>
               </div>
             </div>
-          </div>
-          <AvatarDisplay :avatar="currentUser?.avatar" :size="36" class="message-avatar mine clickable-avatar" @click="showUserProfile(currentUserId)" />
+            <AvatarDisplay :avatar="currentUser?.avatar" :size="36" class="message-avatar mine clickable-avatar" @click="showUserProfile(currentUserId)" />
+          </template>
         </template>
       </div>
 
@@ -978,7 +988,11 @@ function formatProfileDate(time) {
 }
 
 .message-item.is-mine {
-  flex-direction: row-reverse;
+  justify-content: flex-end;
+}
+
+.message-item.is-mine .message-bubble {
+  align-items: flex-end;
 }
 
 .message-avatar {
@@ -1595,7 +1609,12 @@ function formatProfileDate(time) {
 
 .recalled-mine {
   justify-content: flex-end;
-  margin-left: auto;
+}
+
+.recalled-center {
+  margin: 0 auto;
+  max-width: 100%;
+  justify-content: center;
 }
 
 .recalled-text {
@@ -1618,7 +1637,9 @@ function formatProfileDate(time) {
 .message-read-status {
   display: flex;
   align-items: center;
-  opacity: 0.5;
+  justify-content: flex-end;
+  opacity: 0.6;
+  height: 16px;
 }
 
 .message-read-status.read {
@@ -1626,12 +1647,24 @@ function formatProfileDate(time) {
 }
 
 .read-icon-single {
-  color: #fff;
-  opacity: 0.6;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 12px;
 }
 
-.read-icon-double {
-  color: #98e8ff;
+.read-double-check {
+  display: inline-flex;
+  align-items: center;
+  position: relative;
+  height: 16px;
+}
+
+.read-double-check .van-icon {
+  color: #7ed6ff;
+  font-size: 12px;
+}
+
+.read-double-check .double-second {
+  margin-left: -6px;
 }
 
 .bubble-contextmenu {

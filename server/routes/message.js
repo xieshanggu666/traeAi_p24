@@ -172,15 +172,15 @@ router.get('/:bottleId', async (req, res) => {
       params.push(pickerDeletedAt);
     }
 
-    query += ' ORDER BY m.created_at ASC';
-
-    const [messages] = await pool.execute(query, params);
-
     await pool.execute(
       'UPDATE messages SET is_read = 1 WHERE bottle_id = ? AND receiver_id = ? AND is_read = 0' +
       (pickerDeletedAt ? ' AND created_at > ?' : ''),
       pickerDeletedAt ? [bottleId, userId, pickerDeletedAt] : [bottleId, userId]
     );
+
+    query += ' ORDER BY m.created_at ASC';
+
+    const [messages] = await pool.execute(query, params);
 
     res.json(generateResponse(true, messages, '获取消息成功'));
   } catch (error) {
