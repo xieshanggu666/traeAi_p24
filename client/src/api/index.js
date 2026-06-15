@@ -74,6 +74,18 @@ export const getUnreadCount = () => {
   return request.get('/message/unread');
 };
 
+export const recallMessage = (messageId) => {
+  return request.post(`/message/recall/${messageId}`);
+};
+
+export const updateTypingStatus = (bottleId, isTyping) => {
+  return request.post('/message/typing', { bottleId, isTyping });
+};
+
+export const getTypingStatus = (bottleId) => {
+  return request.get(`/message/typing/${bottleId}`);
+};
+
 export const deleteBottle = (bottleId) => {
   return request.delete(`/bottle/${bottleId}`);
 };

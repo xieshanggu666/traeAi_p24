@@ -13,6 +13,7 @@ const { startScheduledTasks } = require('./utils/bottleScheduler');
 const pool = require('./config/db');
 const { generateUUID } = require('./utils/helper');
 const { migrateSkins } = require('./config/migrateSkins');
+const { migrateMessageAdvanced } = require('./config/migrateMessageAdvanced');
 
 async function ensureUserIntimacyTable() {
   try {
@@ -145,6 +146,12 @@ app.listen(PORT, async () => {
     await migrateSkins();
   } catch (error) {
     console.error('皮肤功能迁移失败，但服务继续运行:', error.message);
+  }
+  
+  try {
+    await migrateMessageAdvanced();
+  } catch (error) {
+    console.error('消息高级功能迁移失败，但服务继续运行:', error.message);
   }
   
   startScheduledTasks();

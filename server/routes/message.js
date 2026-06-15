@@ -16,6 +16,32 @@ async function checkTypeColumn() {
   return hasTypeColumn;
 }
 
+let hasRecalledColumn = null;
+
+async function checkRecalledColumn() {
+  if (hasRecalledColumn !== null) return hasRecalledColumn;
+  try {
+    await pool.execute('SELECT is_recalled FROM messages LIMIT 0');
+    hasRecalledColumn = true;
+  } catch {
+    hasRecalledColumn = false;
+  }
+  return hasRecalledColumn;
+}
+
+let hasTypingStatusTable = null;
+
+async function checkTypingStatusTable() {
+  if (hasTypingStatusTable !== null) return hasTypingStatusTable;
+  try {
+    await pool.execute('SELECT 1 FROM typing_status LIMIT 0');
+    hasTypingStatusTable = true;
+  } catch {
+    hasTypingStatusTable = false;
+  }
+  return hasTypingStatusTable;
+}
+
 let hasUserIntimacyTable = null;
 
 async function checkUserIntimacyTable() {
@@ -128,10 +154,12 @@ router.get('/:bottleId', async (req, res) => {
     }
 
     const typeCol = await checkTypeColumn();
+    const recalledCol = await checkRecalledColumn();
     const selectType = typeCol ? ', m.type' : '';
+    const selectRecalled = recalledCol ? ', m.is_recalled, m.recalled_at' : '';
 
     let query = 
-      'SELECT m.id, m.bottle_id, m.sender_id, m.receiver_id, m.content' + selectType + ', m.is_read, m.created_at, ' +
+      'SELECT m.id, m.bottle_id, m.sender_id, m.receiver_id, m.content' + selectType + ', m.is_read' + selectRecalled + ', m.created_at, ' +
       'u.nickname as sender_nickname, u.avatar as sender_avatar ' +
       'FROM messages m ' +
       'LEFT JOIN users u ON m.sender_id = u.id ' +
@@ -194,8 +222,9 @@ router.post('/send', async (req, res) => {
     await addIntimacy(bottleId, 1);
 
     const selectType = typeCol ? ', m.type' : '';
+    const selectRecalled = (await checkRecalledColumn()) ? ', m.is_recalled, m.recalled_at' : '';
     const [message] = await pool.execute(
-      'SELECT m.id, m.bottle_id, m.sender_id, m.receiver_id, m.content' + selectType + ', m.is_read, m.created_at, ' +
+      'SELECT m.id, m.bottle_id, m.sender_id, m.receiver_id, m.content' + selectType + ', m.is_read' + selectRecalled + ', m.created_at, ' +
       'u.nickname as sender_nickname, u.avatar as sender_avatar ' +
       'FROM messages m ' +
       'LEFT JOIN users u ON m.sender_id = u.id ' +
@@ -289,6 +318,160 @@ router.get('/unread', async (req, res) => {
   } catch (error) {
     console.error('获取未读消息数失败:', error);
     res.status(500).json(generateResponse(false, null, '获取未读消息数失败'));
+  }
+});
+
+const RECALL_WINDOW_MINUTES = 3;
+
+router.post('/recall/:messageId', async (req, res) => {
+  try {
+    const { messageId } = req.params;
+    const userId = req.user.userId;
+
+    if (!messageId) {
+      return res.status(400).json(generateResponse(false, null, '参数不完整'));
+    }
+
+    const recalledCol = await checkRecalledColumn();
+    if (!recalledCol) {
+      return res.status(400).json(generateResponse(false, null, '数据库尚未升级，请联系管理员'));
+    }
+
+    const selectRecalled = ', m.is_recalled, m.recalled_at';
+    const [messages] = await pool.execute(
+      'SELECT m.id, m.bottle_id, m.sender_id, m.receiver_id, m.content, m.is_read' + selectRecalled + ', m.created_at ' +
+      'FROM messages m WHERE m.id = ?',
+      [messageId]
+    );
+
+    if (messages.length === 0) {
+      return res.status(404).json(generateResponse(false, null, '消息不存在'));
+    }
+
+    const msg = messages[0];
+
+    if (msg.sender_id !== userId) {
+      return res.status(403).json(generateResponse(false, null, '只能撤回自己发送的消息'));
+    }
+
+    if (msg.is_recalled) {
+      return res.status(400).json(generateResponse(false, null, '该消息已被撤回'));
+    }
+
+    const createdAt = new Date(msg.created_at).getTime();
+    const now = Date.now();
+    const diffMinutes = (now - createdAt) / (1000 * 60);
+
+    if (diffMinutes > RECALL_WINDOW_MINUTES) {
+      return res.status(400).json(generateResponse(false, null, `只能撤回${RECALL_WINDOW_MINUTES}分钟内的消息`));
+    }
+
+    await pool.execute(
+      'UPDATE messages SET is_recalled = 1, recalled_at = NOW() WHERE id = ?',
+      [messageId]
+    );
+
+    res.json(generateResponse(true, {
+      messageId,
+      is_recalled: 1,
+      recalled_at: new Date().toISOString()
+    }, '消息撤回成功'));
+  } catch (error) {
+    console.error('撤回消息失败:', error);
+    res.status(500).json(generateResponse(false, null, '撤回消息失败'));
+  }
+});
+
+router.post('/typing', async (req, res) => {
+  try {
+    const { bottleId, isTyping } = req.body;
+    const userId = req.user.userId;
+
+    if (!bottleId) {
+      return res.status(400).json(generateResponse(false, null, '参数不完整'));
+    }
+
+    const tableExists = await checkTypingStatusTable();
+    if (!tableExists) {
+      return res.json(generateResponse(true, { success: false }, '数据库尚未升级'));
+    }
+
+    const pair = await getBottleUserPair(bottleId);
+    if (!pair) {
+      return res.status(404).json(generateResponse(false, null, '瓶子不存在或未配对'));
+    }
+
+    const otherUserId = pair.user_id1 === userId ? pair.user_id2 : pair.user_id1;
+
+    const [existing] = await pool.execute(
+      'SELECT id FROM typing_status WHERE bottle_id = ? AND user_id = ?',
+      [bottleId, userId]
+    );
+
+    if (existing.length > 0) {
+      await pool.execute(
+        'UPDATE typing_status SET is_typing = ?, last_typing_at = ? WHERE id = ?',
+        [isTyping ? 1 : 0, isTyping ? new Date() : null, existing[0].id]
+      );
+    } else {
+      const id = generateUUID();
+      await pool.execute(
+        'INSERT INTO typing_status (id, bottle_id, user_id, other_user_id, is_typing, last_typing_at) VALUES (?, ?, ?, ?, ?, ?)',
+        [id, bottleId, userId, otherUserId, isTyping ? 1 : 0, isTyping ? new Date() : null]
+      );
+    }
+
+    res.json(generateResponse(true, { success: true }, '状态更新成功'));
+  } catch (error) {
+    console.error('更新打字状态失败:', error);
+    res.status(500).json(generateResponse(false, null, '更新打字状态失败'));
+  }
+});
+
+router.get('/typing/:bottleId', async (req, res) => {
+  try {
+    const { bottleId } = req.params;
+    const userId = req.user.userId;
+
+    if (!bottleId) {
+      return res.status(400).json(generateResponse(false, null, '参数不完整'));
+    }
+
+    const tableExists = await checkTypingStatusTable();
+    if (!tableExists) {
+      return res.json(generateResponse(true, { isTyping: false }, '数据库尚未升级'));
+    }
+
+    const pair = await getBottleUserPair(bottleId);
+    if (!pair) {
+      return res.json(generateResponse(true, { isTyping: false }, '瓶子不存在或未配对'));
+    }
+
+    const otherUserId = pair.user_id1 === userId ? pair.user_id2 : pair.user_id1;
+
+    const [rows] = await pool.execute(
+      'SELECT is_typing, last_typing_at FROM typing_status WHERE bottle_id = ? AND user_id = ?',
+      [bottleId, otherUserId]
+    );
+
+    let isTyping = false;
+    if (rows.length > 0 && rows[0].is_typing && rows[0].last_typing_at) {
+      const lastTyping = new Date(rows[0].last_typing_at).getTime();
+      const now = Date.now();
+      if (now - lastTyping < 8000) {
+        isTyping = true;
+      } else {
+        await pool.execute(
+          'UPDATE typing_status SET is_typing = 0, last_typing_at = NULL WHERE bottle_id = ? AND user_id = ?',
+          [bottleId, otherUserId]
+        );
+      }
+    }
+
+    res.json(generateResponse(true, { isTyping }, '获取成功'));
+  } catch (error) {
+    console.error('获取打字状态失败:', error);
+    res.status(500).json(generateResponse(false, null, '获取打字状态失败'));
   }
 });
 

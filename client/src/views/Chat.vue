@@ -6,7 +6,15 @@
         <AvatarDisplay :avatar="otherUser?.avatar || '🐱'" :size="44" class="chat-avatar" />
         <div class="chat-user-detail">
           <div class="chat-nickname">{{ otherUser?.nickname || '匿名用户' }}</div>
-          <div class="chat-status">匿名聊天中</div>
+          <div class="chat-status" :class="{ 'typing-status': otherIsTyping }">
+            <template v-if="otherIsTyping">
+              <span class="typing-dots">
+                <span></span><span></span><span></span>
+              </span>
+              对方正在输入
+            </template>
+            <template v-else>匿名聊天中</template>
+          </div>
         </div>
       </div>
       <div class="header-right">
@@ -35,7 +43,10 @@
       >
         <AvatarDisplay :avatar="otherUser?.avatar || msg.sender_avatar" :size="36" class="message-avatar clickable-avatar" v-if="msg.sender_id !== currentUserId" @click="showUserProfile(otherUserId)" />
         <template v-if="msg.sender_id !== currentUserId">
-          <div class="message-bubble" :class="{ 'gift-bubble': isGiftMessage(msg) }">
+          <div v-if="msg.is_recalled" class="recalled-message recalled-other">
+            <span class="recalled-text">对方撤回了一条消息</span>
+          </div>
+          <div v-else class="message-bubble" :class="{ 'gift-bubble': isGiftMessage(msg) }">
             <template v-if="isGiftMessage(msg)">
               <div class="gift-message">
                 <div class="gift-label">🎁 赠送了礼物</div>
@@ -55,7 +66,16 @@
           </div>
         </template>
         <template v-else>
-          <div class="message-bubble" :class="{ 'gift-bubble-mine': isGiftMessage(msg) }">
+          <div v-if="msg.is_recalled" class="recalled-message recalled-mine">
+            <span class="recalled-text">你撤回了一条消息</span>
+          </div>
+          <div 
+            v-else 
+            class="message-bubble" 
+            :class="{ 'gift-bubble-mine': isGiftMessage(msg), 'bubble-contextmenu': contextMenuMsgId === msg.id }"
+            @contextmenu.prevent="showContextMenu($event, msg)"
+            @longpress="handleLongPress(msg)"
+          >
             <template v-if="isGiftMessage(msg)">
               <div class="gift-message">
                 <div class="gift-label">🎁 赠送了礼物</div>
@@ -71,7 +91,17 @@
             <template v-else>
               <div class="message-content">{{ msg.content }}</div>
             </template>
-            <div class="message-time">{{ formatTime(msg.created_at) }}</div>
+            <div class="message-footer">
+              <div class="message-time">{{ formatTime(msg.created_at) }}</div>
+              <div class="message-read-status" :class="{ 'read': msg.is_read }">
+                <template v-if="msg.is_read">
+                  <van-icon name="success" size="14" class="read-icon-double" />
+                </template>
+                <template v-else>
+                  <van-icon name="checked" size="14" class="read-icon-single" />
+                </template>
+              </div>
+            </div>
           </div>
           <AvatarDisplay :avatar="currentUser?.avatar" :size="36" class="message-avatar mine clickable-avatar" @click="showUserProfile(currentUserId)" />
         </template>
@@ -123,6 +153,28 @@
       </div>
     </div>
 
+    <div 
+      v-if="showRecallMenu" 
+      class="context-menu-mask" 
+      @click="hideContextMenu"
+    >
+      <div 
+        class="context-menu" 
+        :style="{ top: contextMenuPos.top + 'px', left: contextMenuPos.left + 'px' }"
+        @click.stop
+      >
+        <div 
+          class="context-menu-item recall-item"
+          :class="{ disabled: !canRecallSelectedMsg }"
+          @click="handleRecallMessage"
+        >
+          <van-icon name="replay" size="16" />
+          <span>撤回</span>
+          <span v-if="!canRecallSelectedMsg" class="recall-tip">{{ recallDisabledReason }}</span>
+        </div>
+      </div>
+    </div>
+
     <div class="input-area">
       <div class="gift-btn" @click="showGiftPanel = true">
         <van-icon name="gift-o" size="24" color="#667eea" />
@@ -136,8 +188,9 @@
         :placeholder="isConsecutiveLimited ? '等待对方回复...' : '输入消息...'"
         rows="1"
         @keydown.enter.exact.prevent="sendMessage"
-        @input="adjustTextareaHeight"
-        @focus="showQuickReply = false"
+        @input="onMessageInput"
+        @focus="showQuickReply = false; handleTypingInput()"
+        @blur="sendTypingStatus(false)"
         ref="textareaRef"
         :disabled="isConsecutiveLimited"
       ></textarea>
@@ -279,7 +332,7 @@ import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { showToast, showDialog } from 'vant';
 import { getUser } from '../utils/storage';
-import { getMessages, sendMessage as apiSendMessage, getBottleDetail, getBackpackItems, sendChatGift, getIntimacy, getUserIntimacy, getUserProfile, sendFriendRequest } from '../api';
+import { getMessages, sendMessage as apiSendMessage, getBottleDetail, getBackpackItems, sendChatGift, getIntimacy, getUserIntimacy, getUserProfile, sendFriendRequest, recallMessage, updateTypingStatus, getTypingStatus } from '../api';
 import AvatarDisplay from '../components/AvatarDisplay.vue';
 
 const route = useRoute();
@@ -313,8 +366,17 @@ const isProfileSelf = ref(false);
 const showRequestDialog = ref(false);
 const requestMessage = ref('');
 const addingFriend = ref(false);
+const showRecallMenu = ref(false);
+const contextMenuMsgId = ref(null);
+const contextMenuPos = ref({ top: 0, left: 0 });
+const selectedMessage = ref(null);
+const otherIsTyping = ref(false);
+let typingTimer = null;
+let typingSendTimer = null;
+let lastTypingSent = false;
 
 const CONSECUTIVE_LIMIT = 5;
+const RECALL_WINDOW_MINUTES = 3;
 
 const consecutiveCount = computed(() => {
   if (!currentUserId.value || messages.value.length === 0) return 0;
@@ -330,6 +392,27 @@ const consecutiveCount = computed(() => {
 });
 
 const isConsecutiveLimited = computed(() => consecutiveCount.value >= CONSECUTIVE_LIMIT);
+
+const canRecallSelectedMsg = computed(() => {
+  if (!selectedMessage.value) return false;
+  if (selectedMessage.value.sender_id !== currentUserId.value) return false;
+  if (selectedMessage.value.is_recalled) return false;
+  const createdAt = new Date(selectedMessage.value.created_at).getTime();
+  const now = Date.now();
+  const diffMinutes = (now - createdAt) / (1000 * 60);
+  return diffMinutes <= RECALL_WINDOW_MINUTES;
+});
+
+const recallDisabledReason = computed(() => {
+  if (!selectedMessage.value) return '';
+  if (selectedMessage.value.sender_id !== currentUserId.value) return '非本人消息';
+  if (selectedMessage.value.is_recalled) return '已撤回';
+  const createdAt = new Date(selectedMessage.value.created_at).getTime();
+  const now = Date.now();
+  const diffMinutes = (now - createdAt) / (1000 * 60);
+  if (diffMinutes > RECALL_WINDOW_MINUTES) return '超过3分钟';
+  return '';
+});
 
 const quickReplyCategories = [
   {
@@ -394,6 +477,7 @@ onMounted(() => {
   
   initChat();
   timer = setInterval(fetchMessages, 3000);
+  typingTimer = setInterval(fetchTypingStatus, 2000);
 });
 
 watch(showGiftPanel, (val) => {
@@ -406,6 +490,9 @@ watch(showGiftPanel, (val) => {
 
 onUnmounted(() => {
   if (timer) clearInterval(timer);
+  if (typingTimer) clearInterval(typingTimer);
+  if (typingSendTimer) clearTimeout(typingSendTimer);
+  sendTypingStatus(false);
 });
 
 watch(messages, () => {
@@ -453,6 +540,98 @@ async function fetchMessages() {
   }
 }
 
+async function fetchTypingStatus() {
+  if (!bottleId) return;
+  try {
+    const result = await getTypingStatus(bottleId);
+    otherIsTyping.value = result.isTyping || false;
+  } catch (error) {
+    console.error('获取打字状态失败:', error);
+  }
+}
+
+async function sendTypingStatus(isTyping) {
+  if (!bottleId) return;
+  try {
+    await updateTypingStatus(bottleId, isTyping);
+    lastTypingSent = isTyping;
+  } catch (error) {
+    console.error('发送打字状态失败:', error);
+  }
+}
+
+function handleTypingInput() {
+  const hasContent = messageContent.value.trim().length > 0;
+  if (hasContent && !lastTypingSent) {
+    sendTypingStatus(true);
+  }
+  if (typingSendTimer) clearTimeout(typingSendTimer);
+  typingSendTimer = setTimeout(() => {
+    sendTypingStatus(false);
+  }, 3000);
+}
+
+function showContextMenu(event, msg) {
+  if (msg.sender_id !== currentUserId.value || msg.is_recalled) return;
+  event.preventDefault();
+  selectedMessage.value = msg;
+  contextMenuMsgId.value = msg.id;
+  const rect = event.target.getBoundingClientRect();
+  contextMenuPos.value = {
+    top: rect.top - 50,
+    left: Math.max(10, rect.left - 40)
+  };
+  showRecallMenu.value = true;
+}
+
+function handleLongPress(msg) {
+  if (msg.sender_id !== currentUserId.value || msg.is_recalled) return;
+  selectedMessage.value = msg;
+  contextMenuMsgId.value = msg.id;
+  const msgIndex = messages.value.findIndex(m => m.id === msg.id);
+  const approximateTop = 200 + msgIndex * 60;
+  contextMenuPos.value = {
+    top: approximateTop,
+    left: window.innerWidth - 120
+  };
+  showRecallMenu.value = true;
+}
+
+function hideContextMenu() {
+  showRecallMenu.value = false;
+  contextMenuMsgId.value = null;
+  selectedMessage.value = null;
+}
+
+async function handleRecallMessage() {
+  if (!canRecallSelectedMsg.value || !selectedMessage.value) return;
+  try {
+    await showDialog({
+      title: '确认撤回',
+      message: '确定要撤回这条消息吗？',
+      showCancelButton: true,
+      confirmButtonText: '撤回',
+      cancelButtonText: '取消'
+    });
+  } catch {
+    hideContextMenu();
+    return;
+  }
+  try {
+    await recallMessage(selectedMessage.value.id);
+    const msg = messages.value.find(m => m.id === selectedMessage.value.id);
+    if (msg) {
+      msg.is_recalled = 1;
+      msg.recalled_at = new Date().toISOString();
+    }
+    showToast('撤回成功');
+  } catch (error) {
+    showToast(error.businessMessage || error.httpMessage || '撤回失败');
+  } finally {
+    hideContextMenu();
+  }
+}
+
 async function fetchIntimacy() {
   if (!otherUserId.value) return;
   try {
@@ -463,10 +642,17 @@ async function fetchIntimacy() {
   }
 }
 
+function onMessageInput() {
+  adjustTextareaHeight();
+  handleTypingInput();
+}
+
 async function sendMessage() {
   if (!canSend.value) return;
 
   isSending.value = true;
+  sendTypingStatus(false);
+  if (typingSendTimer) clearTimeout(typingSendTimer);
 
   try {
     const result = await apiSendMessage(
@@ -1354,5 +1540,152 @@ function formatProfileDate(time) {
   color: #666;
   margin-bottom: 12px;
   text-align: center;
+}
+
+.typing-status {
+  color: #667eea;
+}
+
+.typing-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-right: 4px;
+}
+
+.typing-dots span {
+  width: 4px;
+  height: 4px;
+  background: #667eea;
+  border-radius: 50%;
+  animation: typingBounce 1.4s infinite ease-in-out both;
+}
+
+.typing-dots span:nth-child(1) {
+  animation-delay: -0.32s;
+}
+
+.typing-dots span:nth-child(2) {
+  animation-delay: -0.16s;
+}
+
+@keyframes typingBounce {
+  0%, 80%, 100% {
+    transform: scale(0.6);
+    opacity: 0.5;
+  }
+  40% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.recalled-message {
+  max-width: 70%;
+  padding: 8px 16px;
+  background: transparent;
+  border-radius: 16px;
+  display: flex;
+  align-items: center;
+}
+
+.recalled-other {
+  justify-content: flex-start;
+}
+
+.recalled-mine {
+  justify-content: flex-end;
+  margin-left: auto;
+}
+
+.recalled-text {
+  font-size: 12px;
+  color: #999;
+  font-style: italic;
+  background: #f0f0f0;
+  padding: 6px 14px;
+  border-radius: 12px;
+}
+
+.message-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  padding: 0 4px;
+}
+
+.message-read-status {
+  display: flex;
+  align-items: center;
+  opacity: 0.5;
+}
+
+.message-read-status.read {
+  opacity: 1;
+}
+
+.read-icon-single {
+  color: #fff;
+  opacity: 0.6;
+}
+
+.read-icon-double {
+  color: #98e8ff;
+}
+
+.bubble-contextmenu {
+  box-shadow: 0 0 0 2px #667eea40;
+}
+
+.context-menu-mask {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 2000;
+}
+
+.context-menu {
+  position: fixed;
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  padding: 4px 0;
+  min-width: 100px;
+  z-index: 2001;
+}
+
+.context-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  font-size: 14px;
+  color: #333;
+  cursor: pointer;
+  transition: background 0.2s;
+  white-space: nowrap;
+}
+
+.context-menu-item:active {
+  background: #f5f5f5;
+}
+
+.context-menu-item.recall-item {
+  color: #ff4d4f;
+}
+
+.context-menu-item.disabled {
+  color: #ccc;
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.recall-tip {
+  font-size: 11px;
+  color: #ccc;
+  margin-left: 4px;
 }
 </style>
