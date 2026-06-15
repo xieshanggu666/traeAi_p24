@@ -6,6 +6,7 @@ const pool = require('../config/db');
 const { generateUUID, generateResponse } = require('../utils/helper');
 const { OPERATION_TYPES, logOperation } = require('../utils/bottleLogger');
 const { BOTTLE_EXPIRE_DAYS, MAX_PICK_COUNT } = require('../utils/bottleScheduler');
+const { getUserActiveSkin, getSkinById } = require('./shop');
 
 const DAILY_LIMIT = 20;
 const RECALL_TIME_LIMIT_MINUTES = 5;
@@ -164,10 +165,13 @@ router.post('/throw', async (req, res) => {
 
     const bottleId = generateUUID();
 
+    const activeSkin = await getUserActiveSkin(senderId, conn);
+    const skinId = activeSkin ? activeSkin.id : null;
+
     await conn.execute(
-      `INSERT INTO bottles (id, sender_id, content, tag, image_url, target_gender, target_min_age, target_max_age, status, expires_at) 
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, DATE_ADD(NOW(), INTERVAL ${BOTTLE_EXPIRE_DAYS} DAY))`,
-      [bottleId, senderId, content.trim(), tag || null, imageUrl || null, targetGender || 'all', validatedMinAge, validatedMaxAge, 'floating']
+      `INSERT INTO bottles (id, sender_id, content, skin_id, tag, image_url, target_gender, target_min_age, target_max_age, status, expires_at) 
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, DATE_ADD(NOW(), INTERVAL ${BOTTLE_EXPIRE_DAYS} DAY))`,
+      [bottleId, senderId, content.trim(), skinId, tag || null, imageUrl || null, targetGender || 'all', validatedMinAge, validatedMaxAge, 'floating']
     );
 
     await conn.execute(
@@ -185,6 +189,8 @@ router.post('/throw', async (req, res) => {
     res.json(generateResponse(true, {
       id: bottleId,
       content: content.trim(),
+      skinId: skinId,
+      skin: activeSkin,
       tag: tag || null,
       imageUrl: imageUrl || null,
       targetGender: targetGender || 'all',
@@ -272,10 +278,10 @@ function buildFilterQuery(filters, pickerId, isCount = false, pickerInfo = null)
   const whereClause = conditions.join(' AND ');
   const selectFields = isCount
     ? 'COUNT(*) as total'
-    : 'b.id, b.sender_id, b.content, b.tag, b.image_url, b.target_gender, b.target_min_age, b.target_max_age, b.created_at, b.expires_at, b.pick_count, b.is_pinned, b.pinned_at, u.nickname as sender_nickname, u.avatar as sender_avatar, u.gender as sender_gender, u.birthday as sender_birthday';
+    : 'b.id, b.sender_id, b.content, b.skin_id, b.tag, b.image_url, b.target_gender, b.target_min_age, b.target_max_age, b.created_at, b.expires_at, b.pick_count, b.is_pinned, b.pinned_at, u.nickname as sender_nickname, u.avatar as sender_avatar, u.gender as sender_gender, u.birthday as sender_birthday, bs.name as skin_name, bs.emoji as skin_emoji, bs.gradient_from as skin_gradient_from, bs.gradient_to as skin_gradient_to, bs.border_color as skin_border_color, bs.theme as skin_theme, bs.rarity as skin_rarity';
 
   return {
-    query: `SELECT ${selectFields} FROM bottles b LEFT JOIN users u ON b.sender_id = u.id WHERE ${whereClause}`,
+    query: `SELECT ${selectFields} FROM bottles b LEFT JOIN users u ON b.sender_id = u.id LEFT JOIN bottle_skins bs ON b.skin_id = bs.id WHERE ${whereClause}`,
     params
   };
 }
@@ -382,9 +388,9 @@ async function getPinnedBottles(filters, pickerId, pickerInfo) {
   }
 
   const whereClause = conditions.join(' AND ');
-  const selectFields = 'b.id, b.sender_id, b.content, b.tag, b.image_url, b.target_gender, b.target_min_age, b.target_max_age, b.created_at, b.expires_at, b.pick_count, b.is_pinned, b.pinned_at, u.nickname as sender_nickname, u.avatar as sender_avatar, u.gender as sender_gender, u.birthday as sender_birthday';
+  const selectFields = 'b.id, b.sender_id, b.content, b.skin_id, b.tag, b.image_url, b.target_gender, b.target_min_age, b.target_max_age, b.created_at, b.expires_at, b.pick_count, b.is_pinned, b.pinned_at, u.nickname as sender_nickname, u.avatar as sender_avatar, u.gender as sender_gender, u.birthday as sender_birthday, bs.name as skin_name, bs.emoji as skin_emoji, bs.gradient_from as skin_gradient_from, bs.gradient_to as skin_gradient_to, bs.border_color as skin_border_color, bs.theme as skin_theme, bs.rarity as skin_rarity';
 
-  const query = `SELECT ${selectFields} FROM bottles b LEFT JOIN users u ON b.sender_id = u.id WHERE ${whereClause} ORDER BY b.pinned_at DESC`;
+  const query = `SELECT ${selectFields} FROM bottles b LEFT JOIN users u ON b.sender_id = u.id LEFT JOIN bottle_skins bs ON b.skin_id = bs.id WHERE ${whereClause} ORDER BY b.pinned_at DESC`;
   
   const [rows] = await pool.execute(query, params);
   return rows;
@@ -472,9 +478,22 @@ router.post('/pick', async (req, res) => {
     const newPickCount = (bottle.pick_count || 0) + 1;
     const isMaxPick = newPickCount >= MAX_PICK_COUNT;
 
+    const senderSkin = bottle.skin_id ? {
+      id: bottle.skin_id,
+      name: bottle.skin_name,
+      emoji: bottle.skin_emoji,
+      gradient_from: bottle.skin_gradient_from,
+      gradient_to: bottle.skin_gradient_to,
+      border_color: bottle.skin_border_color,
+      theme: bottle.skin_theme,
+      rarity: bottle.skin_rarity
+    } : null;
+
     res.json(generateResponse(true, {
       id: bottle.id,
       content: bottle.content,
+      skinId: bottle.skin_id,
+      senderSkin: senderSkin,
       tag: bottle.tag,
       imageUrl: bottle.image_url,
       targetGender: bottle.target_gender,

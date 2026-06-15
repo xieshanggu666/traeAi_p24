@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const pool = require('../config/db');
 const { generateUUID, generateResponse } = require('../utils/helper');
+const { SKIN_PRICES, DURATION_HOURS } = require('../config/migrateSkins');
 
 let hasMsgTypeColumn = null;
 let hasUserIntimacyTable = null;
@@ -777,4 +778,294 @@ router.post('/send-chat-gift', async (req, res) => {
   }
 });
 
+router.get('/skins', async (req, res) => {
+  try {
+    const userId = req.user.userId;
+
+    const [skins] = await pool.execute(`
+      SELECT * FROM bottle_skins WHERE is_active = 1 ORDER BY 
+        CASE rarity 
+          WHEN 'legendary' THEN 1 
+          WHEN 'rare' THEN 2 
+          ELSE 3 
+        END, created_at DESC
+    `);
+
+    const durationOptions = [
+      { key: '1h', label: '1小时', price: SKIN_PRICES['1h'] },
+      { key: '1d', label: '1天', price: SKIN_PRICES['1d'] },
+      { key: '7d', label: '7天', price: SKIN_PRICES['7d'] }
+    ];
+
+    const [userActiveSkins] = await pool.execute(`
+      SELECT us.skin_id, us.expire_at, us.is_active
+      FROM user_skins us
+      WHERE us.user_id = ? AND us.expire_at > NOW()
+      ORDER BY us.expire_at DESC
+    `, [userId]);
+
+    const userSkinMap = {};
+    userActiveSkins.forEach(us => {
+      if (!userSkinMap[us.skin_id]) {
+        userSkinMap[us.skin_id] = {
+          owned: true,
+          expireAt: us.expire_at,
+          isActive: us.is_active === 1
+        };
+      }
+    });
+
+    const skinsWithStatus = skins.map(skin => ({
+      ...skin,
+      prices: durationOptions,
+      owned: !!userSkinMap[skin.id],
+      expireAt: userSkinMap[skin.id]?.expireAt || null,
+      isActive: userSkinMap[skin.id]?.isActive || false
+    }));
+
+    res.json(generateResponse(true, {
+      skins: skinsWithStatus,
+      durationOptions
+    }, '获取皮肤列表成功'));
+  } catch (error) {
+    console.error('获取皮肤列表失败:', error);
+    res.status(500).json(generateResponse(false, null, '获取皮肤列表失败'));
+  }
+});
+
+router.post('/skins/buy', async (req, res) => {
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+
+    const userId = req.user.userId;
+    const { skinId, duration } = req.body;
+
+    if (!skinId || !duration) {
+      await connection.rollback();
+      return res.status(400).json(generateResponse(false, null, '参数不完整'));
+    }
+
+    if (!SKIN_PRICES[duration]) {
+      await connection.rollback();
+      return res.status(400).json(generateResponse(false, null, '无效的时长'));
+    }
+
+    const [skins] = await connection.execute(
+      'SELECT * FROM bottle_skins WHERE id = ? AND is_active = 1',
+      [skinId]
+    );
+    if (skins.length === 0) {
+      await connection.rollback();
+      return res.status(404).json(generateResponse(false, null, '皮肤不存在或已下架'));
+    }
+    const skin = skins[0];
+
+    const price = SKIN_PRICES[duration];
+    const hours = DURATION_HOURS[duration];
+
+    const [users] = await connection.execute(
+      'SELECT coins FROM users WHERE id = ? FOR UPDATE',
+      [userId]
+    );
+    if (users.length === 0) {
+      await connection.rollback();
+      return res.status(404).json(generateResponse(false, null, '用户不存在'));
+    }
+
+    if (users[0].coins < price) {
+      await connection.rollback();
+      return res.status(400).json(generateResponse(false, null, '漂流币不足'));
+    }
+
+    await connection.execute(
+      'UPDATE users SET coins = coins - ? WHERE id = ?',
+      [price, userId]
+    );
+
+    const coinRecordId = generateUUID();
+    await connection.execute(
+      'INSERT INTO coin_records (id, user_id, amount, type, source) VALUES (?, ?, ?, ?, ?)',
+      [coinRecordId, userId, -price, 'shop', `购买${skin.name}皮肤(${duration})`]
+    );
+
+    const [existingActive] = await connection.execute(
+      'SELECT id, expire_at FROM user_skins WHERE user_id = ? AND skin_id = ? AND is_active = 1 AND expire_at > NOW() FOR UPDATE',
+      [userId, skinId]
+    );
+
+    let newExpireAt;
+    if (existingActive.length > 0) {
+      newExpireAt = new Date(Math.max(
+        new Date(existingActive[0].expire_at).getTime(),
+        Date.now()
+      ) + hours * 60 * 60 * 1000);
+      await connection.execute(
+        'UPDATE user_skins SET expire_at = ? WHERE id = ?',
+        [newExpireAt, existingActive[0].id]
+      );
+    } else {
+      await connection.execute(
+        'UPDATE user_skins SET is_active = 0 WHERE user_id = ? AND is_active = 1',
+        [userId]
+      );
+
+      newExpireAt = new Date(Date.now() + hours * 60 * 60 * 1000);
+      const userSkinId = generateUUID();
+      await connection.execute(`
+        INSERT INTO user_skins (id, user_id, skin_id, duration, price, expire_at, is_active)
+        VALUES (?, ?, ?, ?, ?, ?, 1)
+      `, [userSkinId, userId, skinId, duration, price, newExpireAt]);
+    }
+
+    const purchaseId = generateUUID();
+    await connection.execute(
+      'INSERT INTO shop_purchases (id, user_id, item_key, price) VALUES (?, ?, ?, ?)',
+      [purchaseId, userId, `skin_${skinId}_${duration}`, price]
+    );
+
+    await connection.commit();
+
+    const [updatedUser] = await pool.execute(
+      'SELECT coins FROM users WHERE id = ?',
+      [userId]
+    );
+
+    res.json(generateResponse(true, {
+      skinId: skin.id,
+      skinName: skin.name,
+      duration,
+      price,
+      expireAt: newExpireAt,
+      remainingCoins: updatedUser[0].coins
+    }, `成功购买${skin.name}皮肤`));
+  } catch (error) {
+    await connection.rollback();
+    console.error('购买皮肤失败:', error);
+    res.status(500).json(generateResponse(false, null, '购买皮肤失败'));
+  } finally {
+    connection.release();
+  }
+});
+
+router.get('/skins/mine', async (req, res) => {
+  try {
+    const userId = req.user.userId;
+
+    const [userSkins] = await pool.execute(`
+      SELECT us.id, us.skin_id, us.duration, us.price, us.expire_at, us.is_active, us.created_at,
+             bs.name, bs.description, bs.emoji, bs.gradient_from, bs.gradient_to, bs.border_color, bs.theme, bs.rarity
+      FROM user_skins us
+      LEFT JOIN bottle_skins bs ON us.skin_id = bs.id
+      WHERE us.user_id = ? AND us.expire_at > NOW()
+      ORDER BY us.is_active DESC, us.expire_at DESC
+    `, [userId]);
+
+    const activeSkin = userSkins.find(s => s.is_active === 1) || null;
+
+    res.json(generateResponse(true, {
+      skins: userSkins,
+      activeSkin: activeSkin ? {
+        id: activeSkin.skin_id,
+        name: activeSkin.name,
+        emoji: activeSkin.emoji,
+        gradient_from: activeSkin.gradient_from,
+        gradient_to: activeSkin.gradient_to,
+        border_color: activeSkin.border_color,
+        theme: activeSkin.theme,
+        rarity: activeSkin.rarity,
+        expireAt: activeSkin.expire_at
+      } : null
+    }, '获取我的皮肤成功'));
+  } catch (error) {
+    console.error('获取我的皮肤失败:', error);
+    res.status(500).json(generateResponse(false, null, '获取我的皮肤失败'));
+  }
+});
+
+router.post('/skins/use', async (req, res) => {
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+
+    const userId = req.user.userId;
+    const { skinId } = req.body;
+
+    if (!skinId) {
+      await connection.rollback();
+      return res.status(400).json(generateResponse(false, null, '参数不完整'));
+    }
+
+    const [userSkin] = await connection.execute(
+      'SELECT id FROM user_skins WHERE user_id = ? AND skin_id = ? AND expire_at > NOW() FOR UPDATE',
+      [userId, skinId]
+    );
+    if (userSkin.length === 0) {
+      await connection.rollback();
+      return res.status(400).json(generateResponse(false, null, '皮肤不存在或已过期'));
+    }
+
+    await connection.execute(
+      'UPDATE user_skins SET is_active = 0 WHERE user_id = ? AND is_active = 1',
+      [userId]
+    );
+
+    await connection.execute(
+      'UPDATE user_skins SET is_active = 1 WHERE user_id = ? AND skin_id = ? AND expire_at > NOW()',
+      [userId, skinId]
+    );
+
+    await connection.commit();
+
+    const [skinInfo] = await pool.execute(
+      'SELECT id, name, emoji, gradient_from, gradient_to, border_color, theme, rarity FROM bottle_skins WHERE id = ?',
+      [skinId]
+    );
+
+    res.json(generateResponse(true, {
+      activeSkin: skinInfo[0] || null
+    }, '切换皮肤成功'));
+  } catch (error) {
+    await connection.rollback();
+    console.error('切换皮肤失败:', error);
+    res.status(500).json(generateResponse(false, null, '切换皮肤失败'));
+  } finally {
+    connection.release();
+  }
+});
+
+async function getUserActiveSkin(userId, conn) {
+  const db = conn || pool;
+  try {
+    const [rows] = await db.execute(`
+      SELECT bs.id, bs.name, bs.emoji, bs.gradient_from, bs.gradient_to, bs.border_color, bs.theme, bs.rarity
+      FROM user_skins us
+      LEFT JOIN bottle_skins bs ON us.skin_id = bs.id
+      WHERE us.user_id = ? AND us.is_active = 1 AND us.expire_at > NOW()
+      LIMIT 1
+    `, [userId]);
+    return rows.length > 0 ? rows[0] : null;
+  } catch (error) {
+    console.error('获取用户当前皮肤失败:', error);
+    return null;
+  }
+}
+
+async function getSkinById(skinId, conn) {
+  if (!skinId) return null;
+  const db = conn || pool;
+  try {
+    const [rows] = await db.execute(
+      'SELECT id, name, emoji, gradient_from, gradient_to, border_color, theme, rarity FROM bottle_skins WHERE id = ?',
+      [skinId]
+    );
+    return rows.length > 0 ? rows[0] : null;
+  } catch (error) {
+    console.error('获取皮肤信息失败:', error);
+    return null;
+  }
+}
+
 module.exports = router;
+module.exports.getUserActiveSkin = getUserActiveSkin;
+module.exports.getSkinById = getSkinById;

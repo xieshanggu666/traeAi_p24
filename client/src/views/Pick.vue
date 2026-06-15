@@ -53,14 +53,14 @@
           </div>
           <div class="ripple-effect"></div>
           <div class="bottle-emerge">
-            <div class="emerging-bottle">🍾</div>
+            <div class="emerging-bottle" :style="emergingBottleStyle">{{ currentBottleEmoji }}</div>
           </div>
         </div>
         <div class="picking-text">正在捞取中...</div>
       </div>
 
       <div class="bottle-detail" v-else-if="bottle && !showReply">
-        <div class="bottle-card">
+        <div class="bottle-card" :style="bottleCardStyle" :class="{ 'has-skin': bottle?.senderSkin }">
           <div class="bottle-header">
             <div class="sender-info">
               <AvatarDisplay :avatar="bottle.senderAvatar" :size="50" class="sender-avatar" />
@@ -73,7 +73,11 @@
                 </div>
               </div>
             </div>
-            <span class="bottle-tag">🍾 漂流瓶</span>
+            <span class="bottle-tag" :style="bottleTagStyle">
+              <span class="bottle-tag-emoji">{{ senderSkinEmoji }}</span>
+              <span v-if="bottle?.senderSkin" class="bottle-tag-skin">{{ bottle.senderSkin.name }}</span>
+              <span v-else>漂流瓶</span>
+            </span>
           </div>
 
           <div v-if="bottle.tag" class="bottle-tag-display">
@@ -474,6 +478,42 @@ const filterStatusText = computed(() => {
 
 const canReply = computed(() => {
   return replyContent.value.trim().length > 0;
+});
+
+const currentBottleEmoji = computed(() => {
+  return bottle.value?.senderSkin?.emoji || '🍾';
+});
+
+const senderSkinEmoji = computed(() => {
+  return bottle.value?.senderSkin?.emoji || '🍾';
+});
+
+const emergingBottleStyle = computed(() => {
+  const skin = bottle.value?.senderSkin;
+  if (!skin) return {};
+  return {
+    filter: `drop-shadow(0 4px 10px ${skin.border_color}aa)`
+  };
+});
+
+const bottleCardStyle = computed(() => {
+  const skin = bottle.value?.senderSkin;
+  if (!skin) return {};
+  return {
+    borderColor: skin.border_color,
+    boxShadow: `0 4px 20px ${skin.border_color}30, 0 0 0 1px ${skin.border_color}40 inset`,
+    background: `linear-gradient(135deg, rgba(255,255,255,0.95) 0%, ${skin.gradient_from}10 100%)`
+  };
+});
+
+const bottleTagStyle = computed(() => {
+  const skin = bottle.value?.senderSkin;
+  if (!skin) return {};
+  return {
+    background: `linear-gradient(135deg, ${skin.gradient_from} 0%, ${skin.gradient_to} 100%)`,
+    color: '#fff',
+    borderColor: skin.border_color
+  };
 });
 
 onMounted(() => {
@@ -1484,5 +1524,19 @@ function previewImage(url) {
   position: relative;
   z-index: 1;
   padding: 20px;
+}
+
+.bottle-card.has-skin {
+  border-width: 2px;
+  border-style: solid;
+}
+
+.bottle-tag-emoji {
+  margin-right: 4px;
+}
+
+.bottle-tag-skin {
+  font-size: 11px;
+  margin-left: 2px;
 }
 </style>

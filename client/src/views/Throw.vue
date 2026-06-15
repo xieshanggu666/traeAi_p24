@@ -13,14 +13,21 @@
         </div>
       </div>
 
-      <div class="throw-scene">
+      <div class="throw-scene" :style="sceneStyle">
         <div class="scene-bg">
-          <div class="scene-wave"></div>
+          <div class="scene-wave" :style="{ background: sceneWaveBg }"></div>
         </div>
         <div class="bottle-stage">
-          <div class="bottle-icon-wrap" :class="{ 'bottle-flying': isThrowing }">
-            <span class="bottle-emoji">🍾</span>
+          <div
+            class="bottle-icon-wrap"
+            :class="{ 'bottle-flying': isThrowing }"
+            :style="bottleWrapStyle"
+          >
+            <span class="bottle-emoji">{{ currentBottleEmoji }}</span>
           </div>
+        </div>
+        <div v-if="activeSkin" class="skin-badge" :style="skinBadgeStyle">
+          {{ activeSkin.emoji }} {{ activeSkin.name }}
         </div>
       </div>
 
@@ -202,7 +209,7 @@
 import { ref, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { showToast } from 'vant';
-import { throwBottle as apiThrowBottle, getDailyLimits, uploadBottleImage } from '../api';
+import { throwBottle as apiThrowBottle, getDailyLimits, uploadBottleImage, getMySkins } from '../api';
 
 const router = useRouter();
 const fileInput = ref(null);
@@ -217,6 +224,7 @@ const targetGender = ref('all');
 const targetMinAge = ref(18);
 const targetMaxAge = ref(60);
 const ageUnlimited = ref(true);
+const activeSkin = ref(null);
 
 const tagOptions = [
   { value: '情绪倾诉', label: '情绪倾诉', emoji: '💬' },
@@ -247,9 +255,53 @@ const canThrow = computed(() => {
   return content.value.trim().length > 0 && throwRemaining.value > 0;
 });
 
+const currentBottleEmoji = computed(() => {
+  return activeSkin.value?.emoji || '🍾';
+});
+
+const sceneStyle = computed(() => {
+  if (!activeSkin.value) return {};
+  return {
+    background: `linear-gradient(180deg, ${activeSkin.value.gradient_from}55 0%, ${activeSkin.value.gradient_to}88 60%, ${activeSkin.value.border_color}aa 100%)`
+  };
+});
+
+const sceneWaveBg = computed(() => {
+  if (!activeSkin.value) {
+    return `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1200 120'%3E%3Cpath fill='rgba(255,255,255,0.4)' d='M0,60 C200,100 400,20 600,60 C800,100 1000,20 1200,60 L1200,120 L0,120 Z'/%3E%3C/svg%3E") repeat-x`;
+  }
+  const waveColor = activeSkin.value.border_color.replace('#', '');
+  return `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1200 120'%3E%3Cpath fill='%23${waveColor}99' d='M0,60 C200,100 400,20 600,60 C800,100 1000,20 1200,60 L1200,120 L0,120 Z'/%3E%3C/svg%3E") repeat-x`;
+});
+
+const bottleWrapStyle = computed(() => {
+  if (!activeSkin.value) return {};
+  return {
+    filter: `drop-shadow(0 3px 10px ${activeSkin.value.border_color}99)`
+  };
+});
+
+const skinBadgeStyle = computed(() => {
+  if (!activeSkin.value) return {};
+  return {
+    background: `linear-gradient(135deg, ${activeSkin.value.gradient_from}dd 0%, ${activeSkin.value.gradient_to}dd 100%)`,
+    borderColor: activeSkin.value.border_color
+  };
+});
+
 onMounted(() => {
   fetchDailyLimits();
+  fetchMySkin();
 });
+
+async function fetchMySkin() {
+  try {
+    const result = await getMySkins();
+    activeSkin.value = result.activeSkin;
+  } catch (error) {
+    console.error('获取用户皮肤失败:', error);
+  }
+}
 
 async function fetchDailyLimits() {
   try {
@@ -928,5 +980,19 @@ function goBack() {
   position: relative;
   z-index: 1;
   padding: 20px;
+}
+
+.skin-badge {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  padding: 4px 12px;
+  border-radius: 20px;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 500;
+  border: 1px solid;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+  backdrop-filter: blur(4px);
 }
 </style>

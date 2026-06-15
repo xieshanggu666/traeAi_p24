@@ -209,3 +209,19 @@ export const getFriendRequests = () => {
 export const deleteFriend = (friendId) => {
   return request.delete(`/user/friend/${friendId}`);
 };
+
+export const getSkins = () => {
+  return request.get('/shop/skins');
+};
+
+export const buySkin = (skinId, duration) => {
+  return request.post('/shop/skins/buy', { skinId, duration });
+};
+
+export const getMySkins = () => {
+  return request.get('/shop/skins/mine');
+};
+
+export const useSkin = (skinId) => {
+  return request.post('/shop/skins/use', { skinId });
+};

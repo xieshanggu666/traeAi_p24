@@ -12,6 +12,7 @@ const shopRoutes = require('./routes/shop');
 const { startScheduledTasks } = require('./utils/bottleScheduler');
 const pool = require('./config/db');
 const { generateUUID } = require('./utils/helper');
+const { migrateSkins } = require('./config/migrateSkins');
 
 async function ensureUserIntimacyTable() {
   try {
@@ -139,6 +140,12 @@ app.listen(PORT, async () => {
   
   await ensureUserIntimacyTable();
   await migrateBottleIntimacyToUser();
+  
+  try {
+    await migrateSkins();
+  } catch (error) {
+    console.error('皮肤功能迁移失败，但服务继续运行:', error.message);
+  }
   
   startScheduledTasks();
 });
