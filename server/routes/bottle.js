@@ -947,7 +947,7 @@ router.get('/my', async (req, res) => {
       const [unreadCounts] = await pool.execute(
         'SELECT bottle_id, COUNT(*) as unread_count ' +
         'FROM messages ' +
-        'WHERE receiver_id = ? AND is_read = 0 AND bottle_id IN (' + placeholders + ') ' +
+        'WHERE receiver_id = ? AND is_read = 0 AND is_blocked = 0 AND bottle_id IN (' + placeholders + ') ' +
         'GROUP BY bottle_id',
         [userId, ...bottleIds]
       );

@@ -223,6 +223,11 @@ router.get('/:bottleId', async (req, res) => {
 
     const params = [bottleId, userId, userId];
 
+    if (isBlockedCol) {
+      query += ' AND NOT (m.receiver_id = ? AND m.is_blocked = 1)';
+      params.push(userId);
+    }
+
     if (pickerDeletedAt) {
       query += ' AND m.created_at > ?';
       params.push(pickerDeletedAt);
@@ -230,6 +235,7 @@ router.get('/:bottleId', async (req, res) => {
 
     await pool.execute(
       'UPDATE messages SET is_read = 1 WHERE bottle_id = ? AND receiver_id = ? AND is_read = 0' +
+      (isBlockedCol ? ' AND is_blocked = 0' : '') +
       (pickerDeletedAt ? ' AND created_at > ?' : ''),
       pickerDeletedAt ? [bottleId, userId, pickerDeletedAt] : [bottleId, userId]
     );
@@ -418,10 +424,15 @@ router.get('/unread', async (req, res) => {
   try {
     const userId = req.user.userId;
 
-    const [count] = await pool.execute(
-      'SELECT COUNT(*) as unread_count FROM messages WHERE receiver_id = ? AND is_read = 0',
-      [userId]
-    );
+    const isBlockedCol = await checkIsBlockedColumn();
+    let query = 'SELECT COUNT(*) as unread_count FROM messages WHERE receiver_id = ? AND is_read = 0';
+    const params = [userId];
+
+    if (isBlockedCol) {
+      query += ' AND is_blocked = 0';
+    }
+
+    const [count] = await pool.execute(query, params);
 
     res.json(generateResponse(true, {
       unreadCount: count[0].unread_count
