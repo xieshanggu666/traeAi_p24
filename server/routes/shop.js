@@ -3,9 +3,11 @@ const router = express.Router();
 const pool = require('../config/db');
 const { generateUUID, generateResponse } = require('../utils/helper');
 const { SKIN_PRICES, DURATION_HOURS } = require('../config/migrateSkins');
+const { isBlockedBy, hasBlocked } = require('./user');
 
 let hasMsgTypeColumn = null;
 let hasUserIntimacyTable = null;
+let hasIsBlockedColumn = null;
 
 async function checkMsgTypeColumn() {
   if (hasMsgTypeColumn !== null) return hasMsgTypeColumn;
@@ -16,6 +18,17 @@ async function checkMsgTypeColumn() {
     hasMsgTypeColumn = false;
   }
   return hasMsgTypeColumn;
+}
+
+async function checkIsBlockedColumn() {
+  if (hasIsBlockedColumn !== null) return hasIsBlockedColumn;
+  try {
+    await pool.execute('SELECT is_blocked FROM messages LIMIT 0');
+    hasIsBlockedColumn = true;
+  } catch {
+    hasIsBlockedColumn = false;
+  }
+  return hasIsBlockedColumn;
 }
 
 async function checkUserIntimacyTable() {
@@ -686,6 +699,14 @@ router.post('/send-chat-gift', async (req, res) => {
       return res.status(400).json(generateResponse(false, null, '不能送给自己'));
     }
 
+    const iBlocked = await hasBlocked(userId, receiverId);
+    const blockedByReceiver = await isBlockedBy(userId, receiverId);
+
+    if (iBlocked) {
+      await connection.rollback();
+      return res.status(403).json(generateResponse(false, null, '您已拉黑对方，无法赠送礼物'));
+    }
+
     const gift = PRODUCTS.find(p => p.key === giftKey && p.category === 'gift');
     if (!gift) {
       await connection.rollback();
@@ -715,16 +736,18 @@ router.post('/send-chat-gift', async (req, res) => {
       [userId, giftKey]
     );
 
-    await connection.execute(
-      'UPDATE users SET charm = charm + ? WHERE id = ?',
-      [gift.charmValue, receiverId]
-    );
+    if (!blockedByReceiver) {
+      await connection.execute(
+        'UPDATE users SET charm = charm + ? WHERE id = ?',
+        [gift.charmValue, receiverId]
+      );
 
-    const giftRecordId = generateUUID();
-    await connection.execute(`
-      INSERT INTO received_gifts (id, sender_id, receiver_id, gift_key, gift_name, gift_icon, charm_value)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `, [giftRecordId, userId, receiverId, gift.key, gift.name, gift.icon, gift.charmValue]);
+      const giftRecordId = generateUUID();
+      await connection.execute(`
+        INSERT INTO received_gifts (id, sender_id, receiver_id, gift_key, gift_name, gift_icon, charm_value)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `, [giftRecordId, userId, receiverId, gift.key, gift.name, gift.icon, gift.charmValue]);
+    }
 
     const messageId = generateUUID();
     const messageContent = JSON.stringify({
@@ -736,11 +759,23 @@ router.post('/send-chat-gift', async (req, res) => {
     });
 
     const typeCol = await checkMsgTypeColumn();
+    const isBlockedCol = await checkIsBlockedColumn();
+    const isBlocked = blockedByReceiver ? 1 : 0;
 
-    if (typeCol) {
+    if (typeCol && isBlockedCol) {
+      await connection.execute(
+        'INSERT INTO messages (id, bottle_id, sender_id, receiver_id, content, type, is_blocked) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        [messageId, bottleId, userId, receiverId, messageContent, 'gift', isBlocked]
+      );
+    } else if (typeCol) {
       await connection.execute(
         'INSERT INTO messages (id, bottle_id, sender_id, receiver_id, content, type) VALUES (?, ?, ?, ?, ?, ?)',
         [messageId, bottleId, userId, receiverId, messageContent, 'gift']
+      );
+    } else if (isBlockedCol) {
+      await connection.execute(
+        'INSERT INTO messages (id, bottle_id, sender_id, receiver_id, content, is_blocked) VALUES (?, ?, ?, ?, ?, ?)',
+        [messageId, bottleId, userId, receiverId, messageContent, isBlocked]
       );
     } else {
       await connection.execute(
@@ -750,8 +785,9 @@ router.post('/send-chat-gift', async (req, res) => {
     }
 
     const selectType = typeCol ? ', m.type' : '';
+    const selectIsBlocked = isBlockedCol ? ', m.is_blocked' : '';
     const [message] = await connection.execute(
-      'SELECT m.id, m.bottle_id, m.sender_id, m.receiver_id, m.content' + selectType + ', m.is_read, m.created_at, ' +
+      'SELECT m.id, m.bottle_id, m.sender_id, m.receiver_id, m.content' + selectType + selectIsBlocked + ', m.is_read, m.created_at, ' +
       'u.nickname as sender_nickname, u.avatar as sender_avatar ' +
       'FROM messages m ' +
       'LEFT JOIN users u ON m.sender_id = u.id ' +
@@ -761,14 +797,16 @@ router.post('/send-chat-gift', async (req, res) => {
 
     await connection.commit();
 
-    await addIntimacy(bottleId, gift.charmValue * 2);
+    if (!blockedByReceiver) {
+      await addIntimacy(bottleId, gift.charmValue * 2);
+    }
 
     res.json(generateResponse(true, {
       message: message[0],
       giftName: gift.name,
       receiverName: receivers[0].nickname,
-      charmValue: gift.charmValue
-    }, `成功赠送${gift.name}给${receivers[0].nickname}`));
+      charmValue: blockedByReceiver ? 0 : gift.charmValue
+    }, blockedByReceiver ? '对方已拒收您的礼物' : `成功赠送${gift.name}给${receivers[0].nickname}`));
   } catch (error) {
     await connection.rollback();
     console.error('聊天赠送礼物失败:', error);

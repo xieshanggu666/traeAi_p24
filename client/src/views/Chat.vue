@@ -217,26 +217,26 @@
     </div>
 
     <div class="input-area">
-      <div class="image-btn" @click="triggerImageSelect" :class="{ disabled: iBlocked || blockedMe }">
+      <div class="image-btn" @click="triggerImageSelect" :class="{ disabled: iBlocked }">
         <van-icon name="photograph" size="24" color="#667eea" />
       </div>
-      <div class="gift-btn" @click="showGiftPanel = true" :class="{ disabled: iBlocked || blockedMe }">
+      <div class="gift-btn" @click="showGiftPanel = true" :class="{ disabled: iBlocked }">
         <van-icon name="gift-o" size="24" color="#667eea" />
       </div>
-      <div class="quick-reply-chat-btn" @click="showQuickReply = !showQuickReply" :class="{ active: showQuickReply, disabled: iBlocked || blockedMe }">
+      <div class="quick-reply-chat-btn" @click="showQuickReply = !showQuickReply" :class="{ active: showQuickReply, disabled: iBlocked }">
         <van-icon name="chat-o" size="24" color="#667eea" />
       </div>
       <textarea
         v-model="messageContent"
         class="message-input"
-        :placeholder="blockedMe ? '对方已拒收消息...' : (iBlocked ? '您已拉黑对方...' : (isConsecutiveLimited ? '等待对方回复...' : '输入消息...'))"
+        :placeholder="iBlocked ? '您已拉黑对方，请先解除拉黑...' : (isConsecutiveLimited ? '等待对方回复...' : '输入消息...')"
         rows="1"
         @keydown.enter.exact.prevent="sendMessage"
         @input="onMessageInput"
         @focus="showQuickReply = false; handleTypingInput()"
         @blur="sendTypingStatus(false)"
         ref="textareaRef"
-        :disabled="isConsecutiveLimited || iBlocked || blockedMe"
+        :disabled="isConsecutiveLimited || iBlocked"
       ></textarea>
       <van-button
         type="primary"
@@ -289,11 +289,11 @@
             type="primary"
             round
             block
-            :disabled="!selectedGift || isSendingGift"
+            :disabled="!selectedGift || isSendingGift || iBlocked"
             :loading="isSendingGift"
             @click="handleSendGift"
           >
-            {{ selectedGift ? `赠送「${selectedGift.name}」` : '请选择礼物' }}
+            {{ iBlocked ? '您已拉黑对方，无法赠送' : (selectedGift ? `赠送「${selectedGift.name}」` : '请选择礼物') }}
           </van-button>
         </div>
       </div>
@@ -544,7 +544,7 @@ const quickReplyCategories = [
 let timer = null;
 
 const canSend = computed(() => {
-  return (messageContent.value.trim().length > 0 || pendingImageUrl.value) && otherUserId.value && !isConsecutiveLimited.value && !blockedMe.value && !iBlocked.value;
+  return (messageContent.value.trim().length > 0 || pendingImageUrl.value) && otherUserId.value && !isConsecutiveLimited.value && !iBlocked.value;
 });
 
 const pendingImageUrl = ref(null);
