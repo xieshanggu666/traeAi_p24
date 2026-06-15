@@ -173,6 +173,26 @@ async function migrateSkins() {
     `);
     console.log('user_skins表创建成功');
 
+    console.log('检查并修补user_skins表字段...');
+    const requiredUserSkinColumns = [
+      { name: 'duration', def: 'VARCHAR(10) NOT NULL COMMENT \'时长:1h/1d/7d\'' },
+      { name: 'price', def: 'INT NOT NULL COMMENT \'购买价格\'' },
+      { name: 'expire_at', def: 'TIMESTAMP NOT NULL COMMENT \'过期时间\'' },
+      { name: 'is_active', def: 'TINYINT(1) DEFAULT 1 COMMENT \'是否当前使用:1-使用中,0-未使用\'' }
+    ];
+    const [existingUserSkinCols] = await connection.execute(`
+      SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS 
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'user_skins'
+    `);
+    const existingUserSkinColNames = existingUserSkinCols.map(c => c.COLUMN_NAME);
+    for (const col of requiredUserSkinColumns) {
+      if (!existingUserSkinColNames.includes(col.name)) {
+        console.log(`添加缺失字段: ${col.name}`);
+        await connection.execute(`ALTER TABLE user_skins ADD COLUMN ${col.name} ${col.def}`);
+      }
+    }
+    console.log('user_skins表字段修补完成');
+
     console.log('检查bottles表是否有skin_id字段...');
     const [columns] = await connection.execute(`
       SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS 
@@ -188,18 +208,38 @@ async function migrateSkins() {
       console.log('skin_id字段已存在，跳过');
     }
 
-    console.log('插入默认皮肤数据...');
+    console.log('插入/更新默认皮肤数据...');
     for (const skin of SKINS) {
-      await connection.execute(`
-        INSERT IGNORE INTO bottle_skins (id, name, description, emoji, gradient_from, gradient_to, border_color, theme, rarity, is_active)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
-      `, [
-        skin.id, skin.name, skin.description, skin.emoji,
-        skin.gradient_from, skin.gradient_to, skin.border_color,
-        skin.theme, skin.rarity
-      ]);
+      const [existing] = await connection.execute(
+        'SELECT id FROM bottle_skins WHERE id = ?',
+        [skin.id]
+      );
+      if (existing.length > 0) {
+        await connection.execute(`
+          UPDATE bottle_skins SET 
+            name = ?, description = ?, emoji = ?, 
+            gradient_from = ?, gradient_to = ?, border_color = ?, 
+            theme = ?, rarity = ?, is_active = 1
+          WHERE id = ?
+        `, [
+          skin.name, skin.description, skin.emoji,
+          skin.gradient_from, skin.gradient_to, skin.border_color,
+          skin.theme, skin.rarity, skin.id
+        ]);
+        console.log(`更新皮肤数据: ${skin.name}`);
+      } else {
+        await connection.execute(`
+          INSERT INTO bottle_skins (id, name, description, emoji, gradient_from, gradient_to, border_color, theme, rarity, is_active)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+        `, [
+          skin.id, skin.name, skin.description, skin.emoji,
+          skin.gradient_from, skin.gradient_to, skin.border_color,
+          skin.theme, skin.rarity
+        ]);
+        console.log(`插入皮肤数据: ${skin.name}`);
+      }
     }
-    console.log('默认皮肤数据插入完成');
+    console.log('默认皮肤数据处理完成');
 
     await connection.commit();
     console.log('\n✅ 皮肤功能数据库迁移完成！');
