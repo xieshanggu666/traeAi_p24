@@ -4,7 +4,7 @@ const multer = require('multer');
 const path = require('path');
 const pool = require('../config/db');
 const { generateUUID, generateResponse } = require('../utils/helper');
-const { isBlockedBy, hasBlocked } = require('./user');
+const { isBlockedBy, hasBlocked, isFriend } = require('./user');
 
 const messageImageStorage = multer.diskStorage({
   destination: function (req, file, cb) {
@@ -169,13 +169,15 @@ async function getIntimacyByUserPair(userIdA, userIdB) {
 }
 
 async function getConsecutiveCount(bottleId, userId) {
-  const [msgs] = await pool.execute(
-    'SELECT sender_id FROM messages WHERE bottle_id = ? ORDER BY created_at DESC LIMIT 10',
-    [bottleId]
-  );
+  const isBlockedCol = await checkIsBlockedColumn();
+  let query = 'SELECT sender_id, is_blocked FROM messages WHERE bottle_id = ? ORDER BY created_at DESC LIMIT 10';
+  const [msgs] = await pool.execute(query, [bottleId]);
   let count = 0;
   for (const msg of msgs) {
     if (msg.sender_id === userId) {
+      if (isBlockedCol && msg.is_blocked) {
+        continue;
+      }
       count++;
     } else {
       break;
@@ -265,14 +267,18 @@ router.post('/send', async (req, res) => {
 
     const blocked = await isBlockedBy(senderId, receiverId);
     const iBlocked = await hasBlocked(senderId, receiverId);
+    const isFriendWith = await isFriend(senderId, receiverId);
 
     if (iBlocked) {
       return res.status(403).json(generateResponse(false, null, '您已拉黑对方，无法发送消息'));
     }
 
-    const consecutiveCount = await getConsecutiveCount(bottleId, senderId);
-    if (consecutiveCount >= CONSECUTIVE_LIMIT) {
-      return res.status(429).json(generateResponse(false, null, '对方尚未回复，请等待对方回复后再发送消息'));
+    let consecutiveCount = 0;
+    if (!isFriendWith) {
+      consecutiveCount = await getConsecutiveCount(bottleId, senderId);
+      if (consecutiveCount >= CONSECUTIVE_LIMIT) {
+        return res.status(429).json(generateResponse(false, null, '对方尚未回复，请等待对方回复后再发送消息'));
+      }
     }
 
     const messageId = generateUUID();
@@ -405,6 +411,29 @@ router.get('/send-limit/:bottleId', async (req, res) => {
       return res.status(400).json(generateResponse(false, null, '参数不完整'));
     }
 
+    const [bottleRows] = await pool.execute(
+      'SELECT sender_id, picker_id FROM bottles WHERE id = ?',
+      [bottleId]
+    );
+
+    if (bottleRows.length === 0) {
+      return res.status(404).json(generateResponse(false, null, '瓶子不存在'));
+    }
+
+    const bottle = bottleRows[0];
+    const otherUserId = bottle.sender_id === userId ? bottle.picker_id : bottle.sender_id;
+    const isFriendWith = otherUserId ? await isFriend(userId, otherUserId) : false;
+
+    if (isFriendWith) {
+      return res.json(generateResponse(true, {
+        consecutiveCount: 0,
+        limit: CONSECUTIVE_LIMIT,
+        canSend: true,
+        remaining: CONSECUTIVE_LIMIT,
+        isFriend: true
+      }, '获取成功'));
+    }
+
     const consecutiveCount = await getConsecutiveCount(bottleId, userId);
     const canSend = consecutiveCount < CONSECUTIVE_LIMIT;
 
@@ -412,7 +441,8 @@ router.get('/send-limit/:bottleId', async (req, res) => {
       consecutiveCount,
       limit: CONSECUTIVE_LIMIT,
       canSend,
-      remaining: Math.max(0, CONSECUTIVE_LIMIT - consecutiveCount)
+      remaining: Math.max(0, CONSECUTIVE_LIMIT - consecutiveCount),
+      isFriend: false
     }, '获取成功'));
   } catch (error) {
     console.error('获取发送限制失败:', error);

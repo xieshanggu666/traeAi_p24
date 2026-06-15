@@ -463,6 +463,9 @@ const consecutiveCount = computed(() => {
   let count = 0;
   for (let i = messages.value.length - 1; i >= 0; i--) {
     if (messages.value[i].sender_id === currentUserId.value) {
+      if (messages.value[i].is_blocked) {
+        continue;
+      }
       count++;
     } else {
       break;
@@ -471,7 +474,10 @@ const consecutiveCount = computed(() => {
   return count;
 });
 
-const isConsecutiveLimited = computed(() => consecutiveCount.value >= CONSECUTIVE_LIMIT);
+const isConsecutiveLimited = computed(() => {
+  if (isFriend.value) return false;
+  return consecutiveCount.value >= CONSECUTIVE_LIMIT;
+});
 
 const canRecallSelectedMsg = computed(() => {
   if (!selectedMessage.value) return false;

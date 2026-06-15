@@ -48,6 +48,14 @@ async function hasBlocked(userId, targetUserId) {
   return rows.length > 0;
 }
 
+async function isFriend(userId, targetUserId) {
+  const [rows] = await pool.execute(
+    'SELECT id FROM friends WHERE user_id = ? AND friend_id = ?',
+    [userId, targetUserId]
+  );
+  return rows.length > 0;
+}
+
 function authenticateToken(req, res, next) {
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1];
@@ -703,4 +711,4 @@ router.get('/blacklist/check/:otherUserId', authenticateToken, async (req, res) 
   }
 });
 
-module.exports = { router, authenticateToken, isBlockedBy, hasBlocked };
+module.exports = { router, authenticateToken, isBlockedBy, hasBlocked, isFriend };
