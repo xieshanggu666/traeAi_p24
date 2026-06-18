@@ -52,7 +52,7 @@
       </div>
 
       <div class="my-bottles" @click="goToMy">
-        <van-icon name="records" size="20" />
+        <span class="bottle-icon">🍾</span>
         <span>我的瓶子</span>
         <van-icon name="arrow" size="16" />
       </div>
@@ -325,5 +325,10 @@ function goToRank() {
 .my-bottles span {
   flex: 1;
   font-size: 15px;
+}
+
+.bottle-icon {
+  font-size: 20px;
+  line-height: 1;
 }
 </style>

@@ -19,7 +19,7 @@
               </div>
             </div>
             <div class="my-rank-value">
-              <div class="my-rank-num" :class="{ 'no-rank': wealthRank.myRank == null }">{{ wealthRank.myRank ?? '未上榜' }}</div>
+              <div class="my-rank-num" :class="{ 'no-rank': !hasWealthRank }">{{ displayWealthRank }}</div>
               <div class="my-coins">🪙 {{ user?.coins ?? wealthRank.myInfo?.coins ?? 0 }}</div>
             </div>
           </div>
@@ -52,7 +52,7 @@
               </div>
             </div>
             <div class="my-rank-value">
-              <div class="my-rank-num" :class="{ 'no-rank': charmRank.myRank == null }">{{ charmRank.myRank ?? '未上榜' }}</div>
+              <div class="my-rank-num" :class="{ 'no-rank': !hasCharmRank }">{{ displayCharmRank }}</div>
               <div class="my-charm">✨ {{ user?.charm ?? charmRank.myInfo?.charm ?? 0 }}</div>
             </div>
           </div>
@@ -80,7 +80,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, watch } from 'vue';
+import { ref, computed, onMounted, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { getWealthRank, getCharmRank, getUserInfo, getMyAvatarFrames } from '../api';
 import { getUser, setUser } from '../utils/storage';
@@ -94,14 +94,44 @@ const userAvatarFrame = ref(null);
 
 const wealthRank = ref({
   list: [],
-  myRank: 0,
+  myRank: null,
   myInfo: null
 });
 
 const charmRank = ref({
   list: [],
-  myRank: 0,
+  myRank: null,
   myInfo: null
+});
+
+const displayWealthRank = computed(() => {
+  const rank = wealthRank.value.myRank;
+  if (rank === null || rank === undefined || rank === '') return '未上榜';
+  const numRank = Number(rank);
+  if (!isNaN(numRank) && numRank > 0) return numRank;
+  return '未上榜';
+});
+
+const displayCharmRank = computed(() => {
+  const rank = charmRank.value.myRank;
+  if (rank === null || rank === undefined || rank === '') return '未上榜';
+  const numRank = Number(rank);
+  if (!isNaN(numRank) && numRank > 0) return numRank;
+  return '未上榜';
+});
+
+const hasWealthRank = computed(() => {
+  const rank = wealthRank.value.myRank;
+  if (rank === null || rank === undefined || rank === '') return false;
+  const numRank = Number(rank);
+  return !isNaN(numRank) && numRank > 0;
+});
+
+const hasCharmRank = computed(() => {
+  const rank = charmRank.value.myRank;
+  if (rank === null || rank === undefined || rank === '') return false;
+  const numRank = Number(rank);
+  return !isNaN(numRank) && numRank > 0;
 });
 
 onMounted(() => {

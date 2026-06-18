@@ -756,7 +756,7 @@ router.get('/rank/wealth', authenticateToken, async (req, res) => {
           const [myRankResult] = await pool.execute(`
             SELECT COUNT(*) as rank FROM users WHERE coins > ?
           `, [myCoins]);
-          myRank = myRankResult[0].rank + 1;
+          myRank = Number(myRankResult[0].rank) + 1;
         }
       } catch (e) {
         myRank = null;
@@ -817,7 +817,7 @@ router.get('/rank/charm', authenticateToken, async (req, res) => {
           const [myRankResult] = await pool.execute(`
             SELECT COUNT(*) as rank FROM users WHERE charm > ?
           `, [myCharm]);
-          myRank = myRankResult[0].rank + 1;
+          myRank = Number(myRankResult[0].rank) + 1;
         }
       } catch (e) {
         myRank = null;
