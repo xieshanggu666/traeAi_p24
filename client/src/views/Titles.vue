@@ -68,26 +68,24 @@
           </div>
         </div>
 
-        <div class="all-titles-section">
+        <div class="all-titles-section" v-if="unobtainedTitles.length > 0">
           <div class="section-header">
-            <div class="section-title">全部称号</div>
-            <div class="section-subtitle">共 {{ allTitles.length }} 个称号</div>
+            <div class="section-title">未获得称号</div>
+            <div class="section-subtitle">共 {{ unobtainedTitles.length }} 个</div>
           </div>
           
           <div class="titles-list">
             <div 
-              v-for="title in allTitles" 
+              v-for="title in unobtainedTitles" 
               :key="title.id"
               class="title-item"
               :class="{ 
-                'has-title': hasTitle(title.id),
-                'is-equipped': isEquipped(title.id),
                 [`rarity-${title.rarity}`]: true 
               }"
               @click="showAllTitleDetail(title)"
             >
-              <div class="item-icon" :class="{ 'locked': !hasTitle(title.id) }">
-                {{ hasTitle(title.id) ? title.icon : '🔒' }}
+              <div class="item-icon locked">
+                🔒
               </div>
               <div class="item-info">
                 <div class="item-name">{{ title.name }}</div>
@@ -97,17 +95,7 @@
                 </div>
               </div>
               <div class="item-action">
-                <van-button 
-                  v-if="hasTitle(title.id) && !isEquipped(title.id) && !isTitleExpired(title.id)"
-                  size="mini" 
-                  type="primary" 
-                  round
-                  @click.stop="handleEquip(title.id)"
-                >
-                  佩戴
-                </van-button>
-                <span class="equipped-tag" v-else-if="isEquipped(title.id)">佩戴中</span>
-                <span class="locked-tag" v-else>未获得</span>
+                <span class="locked-tag">未获得</span>
               </div>
             </div>
           </div>
@@ -167,7 +155,7 @@
         
         <div class="detail-actions">
           <van-button 
-            v-if="!hasTitle(selectedTitle.id || selectedTitle.title_id)"
+            v-if="!hasTitle(resolveTitleId(selectedTitle))"
             type="default" 
             block 
             round
@@ -176,7 +164,7 @@
             未获得
           </van-button>
           <van-button 
-            v-else-if="isEquipped(selectedTitle.id || selectedTitle.title_id)"
+            v-else-if="isEquipped(resolveTitleId(selectedTitle))"
             type="warning" 
             block 
             round
@@ -185,7 +173,7 @@
             卸下称号
           </van-button>
           <van-button 
-            v-else-if="isTitleExpired(selectedTitle.id || selectedTitle.title_id)"
+            v-else-if="isTitleExpired(resolveTitleId(selectedTitle))"
             type="default" 
             block 
             round
@@ -237,6 +225,11 @@ const equippedTitle = ref(null);
 const showDetail = ref(false);
 const selectedTitle = ref(null);
 
+const unobtainedTitles = computed(() => {
+  const obtainedIds = new Set(myTitles.value.map(t => t.title_id));
+  return allTitles.value.filter(t => !obtainedIds.has(t.id));
+});
+
 function hasTitle(titleId) {
   return myTitles.value.some(t => t.title_id === titleId && !t.is_expired);
 }
@@ -248,6 +241,10 @@ function isEquipped(titleId) {
 function isTitleExpired(titleId) {
   const title = myTitles.value.find(t => t.title_id === titleId);
   return title ? title.is_expired : false;
+}
+
+function resolveTitleId(title) {
+  return title.title_id || title.id;
 }
 
 function cardStyle(title) {
@@ -397,7 +394,7 @@ async function handleEquip(titleId) {
 async function handleUnequip() {
   if (!selectedTitle.value) return;
   
-  const titleId = selectedTitle.value.id || selectedTitle.value.title_id;
+  const titleId = resolveTitleId(selectedTitle.value);
   
   try {
     await showDialog({
@@ -426,7 +423,7 @@ async function handleUnequip() {
 
 function handleEquipFromDetail() {
   if (!selectedTitle.value) return;
-  const titleId = selectedTitle.value.id || selectedTitle.value.title_id;
+  const titleId = resolveTitleId(selectedTitle.value);
   handleEquip(titleId);
 }
 

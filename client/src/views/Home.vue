@@ -279,11 +279,11 @@ function goToNotifications() {
   align-items: center;
   justify-content: center;
   margin: 30px 0;
-  height: 150px;
+  height: 200px;
 }
 
 .bottle {
-  font-size: 80px;
+  font-size: 120px;
   animation: float 3s ease-in-out infinite;
 }
 
