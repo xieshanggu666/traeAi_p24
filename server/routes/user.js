@@ -731,46 +731,60 @@ router.get('/rank/wealth', authenticateToken, async (req, res) => {
     const coinsField = hasCoins ? 'coins' : '0 as coins';
     const charmField = hasCharm ? 'charm' : '0 as charm';
 
-    let users = [];
+    let list = [];
     if (hasCoins) {
-      const [result] = await pool.execute(`
+      const [rows] = await pool.execute(`
         SELECT id, nickname, avatar, ${coinsField}, ${charmField}
         FROM users
         WHERE coins > 0
         ORDER BY coins DESC
         LIMIT 10
       `);
-      users = result;
+      list = rows.map(row => ({
+        id: row.id,
+        nickname: row.nickname,
+        avatar: row.avatar,
+        coins: Number(row.coins),
+        charm: Number(row.charm)
+      }));
     }
 
     let myRank = null;
     let myCoins = 0;
     if (hasCoins) {
       try {
-        const [myCoinsResult] = await pool.execute(`
+        const [myCoinsRows] = await pool.execute(`
           SELECT coins FROM users WHERE id = ?
         `, [userId]);
-        myCoins = myCoinsResult[0]?.coins || 0;
+        myCoins = Number(myCoinsRows[0]?.coins || 0);
 
         if (myCoins > 0) {
-          const [myRankResult] = await pool.execute(`
-            SELECT COUNT(*) as rank FROM users WHERE coins > ?
+          const [countRows] = await pool.execute(`
+            SELECT COUNT(*) as cnt FROM users WHERE coins > ?
           `, [myCoins]);
-          myRank = Number(myRankResult[0].rank) + 1;
+          myRank = parseInt(countRows[0].cnt, 10) + 1;
         }
       } catch (e) {
+        console.error('计算财富排名出错:', e);
         myRank = null;
       }
     }
 
-    const [myInfoResult] = await pool.execute(`
+    const [myInfoRows] = await pool.execute(`
       SELECT id, nickname, avatar, ${coinsField}, ${charmField} FROM users WHERE id = ?
     `, [userId]);
+    const myInfo = myInfoRows[0] ? {
+      id: myInfoRows[0].id,
+      nickname: myInfoRows[0].nickname,
+      avatar: myInfoRows[0].avatar,
+      coins: Number(myInfoRows[0].coins || 0),
+      charm: Number(myInfoRows[0].charm || 0)
+    } : null;
 
     res.json(generateResponse(true, {
-      list: users,
-      myRank: myRank,
-      myInfo: myInfoResult[0] || null
+      list,
+      myRank,
+      myInfo
     }, '获取财富排行榜成功'));
   } catch (error) {
     console.error('获取财富排行榜失败:', error);
@@ -792,46 +806,60 @@ router.get('/rank/charm', authenticateToken, async (req, res) => {
     const coinsField = hasCoins ? 'coins' : '0 as coins';
     const charmField = hasCharm ? 'charm' : '0 as charm';
 
-    let users = [];
+    let list = [];
     if (hasCharm) {
-      const [result] = await pool.execute(`
+      const [rows] = await pool.execute(`
         SELECT id, nickname, avatar, ${coinsField}, ${charmField}
         FROM users
         WHERE charm > 0
         ORDER BY charm DESC
         LIMIT 10
       `);
-      users = result;
+      list = rows.map(row => ({
+        id: row.id,
+        nickname: row.nickname,
+        avatar: row.avatar,
+        coins: Number(row.coins),
+        charm: Number(row.charm)
+      }));
     }
 
     let myRank = null;
     let myCharm = 0;
     if (hasCharm) {
       try {
-        const [myCharmResult] = await pool.execute(`
+        const [myCharmRows] = await pool.execute(`
           SELECT charm FROM users WHERE id = ?
         `, [userId]);
-        myCharm = myCharmResult[0]?.charm || 0;
+        myCharm = Number(myCharmRows[0]?.charm || 0);
 
         if (myCharm > 0) {
-          const [myRankResult] = await pool.execute(`
-            SELECT COUNT(*) as rank FROM users WHERE charm > ?
+          const [countRows] = await pool.execute(`
+            SELECT COUNT(*) as cnt FROM users WHERE charm > ?
           `, [myCharm]);
-          myRank = Number(myRankResult[0].rank) + 1;
+          myRank = parseInt(countRows[0].cnt, 10) + 1;
         }
       } catch (e) {
+        console.error('计算魅力排名出错:', e);
         myRank = null;
       }
     }
 
-    const [myInfoResult] = await pool.execute(`
+    const [myInfoRows] = await pool.execute(`
       SELECT id, nickname, avatar, ${coinsField}, ${charmField} FROM users WHERE id = ?
     `, [userId]);
+    const myInfo = myInfoRows[0] ? {
+      id: myInfoRows[0].id,
+      nickname: myInfoRows[0].nickname,
+      avatar: myInfoRows[0].avatar,
+      coins: Number(myInfoRows[0].coins || 0),
+      charm: Number(myInfoRows[0].charm || 0)
+    } : null;
 
     res.json(generateResponse(true, {
-      list: users,
-      myRank: myRank,
-      myInfo: myInfoResult[0] || null
+      list,
+      myRank,
+      myInfo
     }, '获取魅力排行榜成功'));
   } catch (error) {
     console.error('获取魅力排行榜失败:', error);
