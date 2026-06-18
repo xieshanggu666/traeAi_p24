@@ -3,7 +3,7 @@
     <div class="header">
       <div class="header-bg"></div>
       <div class="user-card">
-        <AvatarDisplay :avatar="user?.avatar" :size="70" class="user-avatar" />
+        <AvatarDisplay :avatar="user?.avatar" :size="70" :avatarFrame="userAvatarFrame" class="user-avatar" />
         <div class="user-info">
           <div class="user-nickname-row">
             <span class="user-nickname">{{ user?.nickname }}</span>
@@ -50,6 +50,11 @@
           <span class="action-text">我的好友</span>
           <van-icon name="arrow" size="14" color="#ccc" />
         </div>
+        <div class="action-item" @click="goToChatSettings">
+          <van-icon name="chat-o" size="20" color="#7232dd" />
+          <span class="action-text">聊天设置</span>
+          <van-icon name="arrow" size="14" color="#ccc" />
+        </div>
         <div class="action-item" @click="goToBlacklist">
           <van-icon name="shield-o" size="20" color="#ee0a24" />
           <span class="action-text">黑名单</span>
@@ -83,13 +88,14 @@ import { ref, computed, onMounted, watch } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import { showToast } from 'vant';
 import { getUser, clearAuth, setUser } from '../utils/storage';
-import { logout, getUserInfo } from '../api';
+import { logout, getUserInfo, getMyAvatarFrames } from '../api';
 import AvatarDisplay from '../components/AvatarDisplay.vue';
 
 const router = useRouter();
 const route = useRoute();
 const user = ref(null);
 const activeBottom = ref('my');
+const userAvatarFrame = ref(null);
 
 const computedAge = computed(() => {
   if (!user.value?.birthday) return '';
@@ -124,8 +130,18 @@ async function refreshUserInfo() {
     const userInfo = await getUserInfo();
     user.value = userInfo;
     setUser(userInfo);
+    fetchAvatarFrame();
   } catch (error) {
     console.error('刷新用户信息失败:', error);
+  }
+}
+
+async function fetchAvatarFrame() {
+  try {
+    const result = await getMyAvatarFrames();
+    userAvatarFrame.value = result.activeFrame || null;
+  } catch (error) {
+    console.error('获取头像框失败:', error);
   }
 }
 
@@ -150,6 +166,7 @@ function goToShop() { router.push('/shop'); }
 function goToBackpack() { router.push('/backpack'); }
 function goToGifts() { router.push('/gifts'); }
 function goToFriends() { router.push('/friends'); }
+function goToChatSettings() { router.push('/chat-settings'); }
 function goToBlacklist() { router.push('/blacklist'); }
 function goToMy() { router.push('/my'); }
 </script>

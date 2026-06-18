@@ -45,7 +45,7 @@
       </template>
     </div>
 
-    <div class="message-list" ref="messageListRef">
+    <div class="message-list" ref="messageListRef" :style="chatBgStyle">
       <div 
         class="message-item" 
         v-for="msg in messages" 
@@ -63,7 +63,7 @@
           <div v-if="msg.is_recalled" class="recalled-message recalled-other recalled-center">
             <span class="recalled-text">对方撤回了一条消息</span>
           </div>
-          <div v-else class="message-bubble" :class="{ 'gift-bubble': isGiftMessage(msg), 'image-bubble': isImageMessage(msg) }">
+          <div v-else class="message-bubble" :class="{ 'gift-bubble': isGiftMessage(msg), 'image-bubble': isImageMessage(msg) }" :style="otherBubbleStyle">
             <template v-if="isGiftMessage(msg)">
               <div class="gift-message">
                 <div class="gift-label">🎁 赠送了礼物</div>
@@ -97,6 +97,7 @@
             <div 
               class="message-bubble" 
               :class="{ 'gift-bubble-mine': isGiftMessage(msg), 'bubble-contextmenu': contextMenuMsgId === msg.id, 'image-bubble-mine': isImageMessage(msg), 'msg-blocked': msg.is_blocked }"
+              :style="selfBubbleStyle"
               @contextmenu.prevent="showContextMenu($event, msg)"
               @longpress="handleLongPress(msg)"
             >
@@ -133,7 +134,7 @@
                 </div>
               </div>
             </div>
-            <AvatarDisplay :avatar="currentUser?.avatar" :size="36" class="message-avatar mine clickable-avatar" @click="showUserProfile(currentUserId)" />
+            <AvatarDisplay :avatar="currentUser?.avatar" :size="36" :avatarFrame="myAvatarFrame" class="message-avatar mine clickable-avatar" @click="showUserProfile(currentUserId)" />
           </template>
         </template>
       </div>
@@ -407,7 +408,7 @@ import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { showToast, showDialog } from 'vant';
 import { getUser } from '../utils/storage';
-import { getMessages, sendMessage as apiSendMessage, getBottleDetail, getBackpackItems, sendChatGift, getIntimacy, getUserIntimacy, getUserProfile, sendFriendRequest, recallMessage, updateTypingStatus, getTypingStatus, uploadMessageImage, blockUser, unblockUser, checkBlockStatus } from '../api';
+import { getMessages, sendMessage as apiSendMessage, getBottleDetail, getBackpackItems, sendChatGift, getIntimacy, getUserIntimacy, getUserProfile, sendFriendRequest, recallMessage, updateTypingStatus, getTypingStatus, uploadMessageImage, blockUser, unblockUser, checkBlockStatus, getMyChatSkins, getMyAvatarFrames } from '../api';
 import AvatarDisplay from '../components/AvatarDisplay.vue';
 
 const route = useRoute();
@@ -455,8 +456,44 @@ let typingTimer = null;
 let typingSendTimer = null;
 let lastTypingSent = false;
 
+const chatSkin = ref(null);
+const myAvatarFrame = ref(null);
+
 const CONSECUTIVE_LIMIT = 5;
 const RECALL_WINDOW_MINUTES = 3;
+
+const chatBgStyle = computed(() => {
+  if (!chatSkin.value) return {};
+  const style = {};
+  if (chatSkin.value.bg_color) {
+    style.background = chatSkin.value.bg_color;
+  }
+  return style;
+});
+
+const selfBubbleStyle = computed(() => {
+  if (!chatSkin.value) return {};
+  const style = {};
+  if (chatSkin.value.bubble_bg_mine) {
+    style.background = chatSkin.value.bubble_bg_mine;
+  }
+  if (chatSkin.value.text_color_mine) {
+    style.color = chatSkin.value.text_color_mine;
+  }
+  return style;
+});
+
+const otherBubbleStyle = computed(() => {
+  if (!chatSkin.value) return {};
+  const style = {};
+  if (chatSkin.value.bubble_bg_other) {
+    style.background = chatSkin.value.bubble_bg_other;
+  }
+  if (chatSkin.value.text_color_other) {
+    style.color = chatSkin.value.text_color_other;
+  }
+  return style;
+});
 
 const consecutiveCount = computed(() => {
   if (!currentUserId.value || messages.value.length === 0) return 0;
@@ -601,11 +638,29 @@ async function initChat() {
     };
     otherUserId.value = detail.other_id;
     
-    await Promise.all([fetchMessages(), fetchIntimacy(), fetchFriendStatus(), fetchBlockStatus()]);
+    await Promise.all([fetchMessages(), fetchIntimacy(), fetchFriendStatus(), fetchBlockStatus(), fetchChatSkin(), fetchMyAvatarFrame()]);
   } catch (error) {
     showToast(error.businessMessage || error.httpMessage || '出现异常');
   } finally {
     loading.value = false;
+  }
+}
+
+async function fetchChatSkin() {
+  try {
+    const result = await getMyChatSkins();
+    chatSkin.value = result.activeSkin || null;
+  } catch (error) {
+    console.error('获取聊天皮肤失败:', error);
+  }
+}
+
+async function fetchMyAvatarFrame() {
+  try {
+    const result = await getMyAvatarFrames();
+    myAvatarFrame.value = result.activeFrame || null;
+  } catch (error) {
+    console.error('获取头像框失败:', error);
   }
 }
 

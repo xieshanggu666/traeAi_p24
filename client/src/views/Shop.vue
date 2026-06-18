@@ -28,7 +28,7 @@
         />
       </van-tabs>
 
-      <div class="product-list" v-if="!loading && activeCategory !== 'skin'">
+      <div class="product-list" v-if="!loading && (activeCategory === 'function' || activeCategory === 'gift')">
         <div
           v-for="product in filteredProducts"
           :key="product.key"
@@ -130,6 +130,133 @@
         </div>
       </div>
 
+      <div class="avatar-frame-list" v-if="!loading && activeCategory === 'avatar_frame'">
+        <div
+          v-for="frame in avatarFrames"
+          :key="frame.id"
+          class="avatar-frame-card"
+          :class="{ 'frame-active': frame.isActive }"
+        >
+          <div class="frame-preview">
+            <div class="frame-avatar" :style="getFrameStyle(frame)">
+              <span class="frame-avatar-emoji">😊</span>
+            </div>
+            <div class="frame-rarity" :class="`rarity-${frame.rarity}`">
+              {{ getRarityLabel(frame.rarity) }}
+            </div>
+          </div>
+          <div class="frame-info">
+            <div class="frame-name-row">
+              <span class="frame-name">{{ frame.name }}</span>
+              <van-tag
+                v-if="frame.isActive"
+                type="primary"
+                size="medium"
+                round
+                color="#667eea"
+              >使用中</van-tag>
+              <van-tag
+                v-else-if="frame.owned"
+                type="success"
+                size="medium"
+                round
+              >已拥有</van-tag>
+            </div>
+            <div class="frame-desc">{{ frame.description }}</div>
+            <div class="frame-price-row">
+              <span class="frame-price">🪙 {{ frame.price }}</span>
+              <span class="frame-permanent">永久</span>
+            </div>
+            <div class="frame-actions">
+              <van-button
+                v-if="frame.owned && !frame.isActive"
+                size="small"
+                round
+                type="warning"
+                @click="handleUseAvatarFrame(frame)"
+              >
+                使用
+              </van-button>
+              <van-button
+                v-if="!frame.owned"
+                size="small"
+                round
+                type="primary"
+                :disabled="userCoins < frame.price"
+                @click="handleBuyAvatarFrame(frame)"
+              >
+                购买
+              </van-button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="chat-skin-list" v-if="!loading && activeCategory === 'chat_skin'">
+        <div
+          v-for="skin in chatSkins"
+          :key="skin.id"
+          class="chat-skin-card"
+          :class="{ 'chat-skin-active': skin.isActive }"
+        >
+          <div class="chat-skin-preview" :style="getChatSkinPreviewStyle(skin)">
+            <div class="chat-skin-bubble mine" :style="getChatBubbleMineStyle(skin)">
+              <span>你好</span>
+            </div>
+            <div class="chat-skin-bubble other" :style="getChatBubbleOtherStyle(skin)">
+              <span>嗨~</span>
+            </div>
+            <div class="chat-skin-rarity" :class="`rarity-${skin.rarity}`">
+              {{ getRarityLabel(skin.rarity) }}
+            </div>
+          </div>
+          <div class="chat-skin-info">
+            <div class="chat-skin-name-row">
+              <span class="chat-skin-name">{{ skin.name }}</span>
+              <van-tag
+                v-if="skin.isActive"
+                type="primary"
+                size="medium"
+                round
+                color="#667eea"
+              >使用中</van-tag>
+              <van-tag
+                v-else-if="skin.owned"
+                type="success"
+                size="medium"
+                round
+              >已拥有</van-tag>
+            </div>
+            <div class="chat-skin-desc">{{ skin.description }}</div>
+            <div class="chat-skin-price-row">
+              <span class="chat-skin-price">🪙 {{ skin.price }}</span>
+              <span class="chat-skin-permanent">永久</span>
+            </div>
+            <div class="chat-skin-actions">
+              <van-button
+                v-if="skin.owned && !skin.isActive"
+                size="small"
+                round
+                type="warning"
+                @click="handleUseChatSkin(skin)"
+              >
+                使用
+              </van-button>
+              <van-button
+                v-if="!skin.owned"
+                size="small"
+                round
+                type="primary"
+                :disabled="userCoins < skin.price"
+                @click="handleBuyChatSkin(skin)"
+              >
+                购买
+              </van-button>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div class="loading-state" v-if="loading">
         <van-loading color="#667eea" size="24px">加载中...</van-loading>
       </div>
@@ -160,7 +287,7 @@
 import { ref, computed, onMounted, reactive } from 'vue';
 import { useRouter } from 'vue-router';
 import { showToast, showDialog } from 'vant';
-import { getShopProducts, buyProduct, getWelfareInfo, getSkins, buySkin, useSkin } from '../api';
+import { getShopProducts, buyProduct, getWelfareInfo, getSkins, buySkin, useSkin, getAvatarFrames, buyAvatarFrame, useAvatarFrame, getChatSkins, buyChatSkin, useChatSkin } from '../api';
 
 const router = useRouter();
 const active = ref('shop');
@@ -168,6 +295,8 @@ const activeCategory = ref('function');
 const products = ref([]);
 const categories = ref([]);
 const skins = ref([]);
+const avatarFrames = ref([]);
+const chatSkins = ref([]);
 const userCoins = ref(0);
 const loading = ref(false);
 const selectedDuration = reactive({});
@@ -183,7 +312,7 @@ onMounted(() => {
 async function fetchAll() {
   loading.value = true;
   try {
-    await Promise.all([fetchProducts(), fetchSkins(), fetchCoins()]);
+    await Promise.all([fetchProducts(), fetchSkins(), fetchAvatarFrames(), fetchChatSkins(), fetchCoins()]);
   } finally {
     loading.value = false;
   }
@@ -196,7 +325,9 @@ async function fetchProducts() {
     categories.value = [
       { key: 'function', name: '功能道具', icon: '🎯' },
       { key: 'gift', name: '礼物', icon: '🎁' },
-      { key: 'skin', name: '皮肤', icon: '✨' }
+      { key: 'skin', name: '漂流瓶皮肤', icon: '✨' },
+      { key: 'avatar_frame', name: '头像框', icon: '🖼️' },
+      { key: 'chat_skin', name: '聊天皮肤', icon: '💬' }
     ];
   } catch (error) {
     console.error('获取商品列表失败:', error);
@@ -315,6 +446,120 @@ async function handleUseSkin(skin) {
     await useSkin(skin.id);
     showToast(`已切换至「${skin.name}」皮肤`);
     await fetchSkins();
+  } catch (error) {
+    if (error.isBusinessError || error.httpMessage) {
+      showToast(error.businessMessage || error.httpMessage || '切换失败');
+    }
+  }
+}
+
+async function fetchAvatarFrames() {
+  try {
+    const result = await getAvatarFrames();
+    avatarFrames.value = result.frames;
+  } catch (error) {
+    console.error('获取头像框列表失败:', error);
+    avatarFrames.value = [];
+  }
+}
+
+async function fetchChatSkins() {
+  try {
+    const result = await getChatSkins();
+    chatSkins.value = result.skins;
+  } catch (error) {
+    console.error('获取聊天皮肤列表失败:', error);
+    chatSkins.value = [];
+  }
+}
+
+function getFrameStyle(frame) {
+  return {
+    borderColor: frame.border_color,
+    boxShadow: `0 0 12px ${frame.shadow_color || frame.border_color}60`,
+    background: `linear-gradient(135deg, ${frame.gradient_from} 0%, ${frame.gradient_to} 100%)`
+  };
+}
+
+function getChatSkinPreviewStyle(skin) {
+  return {
+    backgroundColor: skin.bg_color
+  };
+}
+
+function getChatBubbleMineStyle(skin) {
+  return {
+    backgroundColor: skin.bubble_bg_mine,
+    color: skin.text_color_mine
+  };
+}
+
+function getChatBubbleOtherStyle(skin) {
+  return {
+    backgroundColor: skin.bubble_bg_other,
+    color: skin.text_color_other
+  };
+}
+
+async function handleBuyAvatarFrame(frame) {
+  try {
+    await showDialog({
+      title: '确认购买',
+      message: `确定花费 ${frame.price} 漂流币购买「${frame.name}」头像框吗？\n购买后永久有效`,
+      showCancelButton: true,
+      confirmButtonText: '购买',
+      cancelButtonText: '取消'
+    });
+
+    const result = await buyAvatarFrame(frame.id);
+    showToast(result._message || '购买成功');
+    await fetchAvatarFrames();
+    await fetchCoins();
+  } catch (error) {
+    if (error.isBusinessError || error.httpMessage) {
+      showToast(error.businessMessage || error.httpMessage || '购买失败');
+    }
+  }
+}
+
+async function handleUseAvatarFrame(frame) {
+  try {
+    await useAvatarFrame(frame.id);
+    showToast(`已切换至「${frame.name}」头像框`);
+    await fetchAvatarFrames();
+  } catch (error) {
+    if (error.isBusinessError || error.httpMessage) {
+      showToast(error.businessMessage || error.httpMessage || '切换失败');
+    }
+  }
+}
+
+async function handleBuyChatSkin(skin) {
+  try {
+    await showDialog({
+      title: '确认购买',
+      message: `确定花费 ${skin.price} 漂流币购买「${skin.name}」聊天皮肤吗？\n购买后永久有效`,
+      showCancelButton: true,
+      confirmButtonText: '购买',
+      cancelButtonText: '取消'
+    });
+
+    const result = await buyChatSkin(skin.id);
+    showToast(result._message || '购买成功');
+    await fetchChatSkins();
+    await fetchCoins();
+  } catch (error) {
+    if (error.isBusinessError || error.httpMessage) {
+      showToast(error.businessMessage || error.httpMessage || '购买失败');
+    }
+  }
+}
+
+async function handleUseChatSkin(skin) {
+  try {
+    await useChatSkin(skin.id);
+    showToast(`已切换至「${skin.name}」聊天皮肤`);
+    await fetchChatSkins();
   } catch (error) {
     if (error.isBusinessError || error.httpMessage) {
       showToast(error.businessMessage || error.httpMessage || '切换失败');
@@ -692,5 +937,268 @@ function goToBackpack() { router.push('/backpack'); }
 .backpack-entry span {
   flex: 1;
   font-size: 15px;
+}
+
+.avatar-frame-list {
+  margin-top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.avatar-frame-card {
+  background: #fff;
+  border-radius: 16px;
+  padding: 16px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+  display: flex;
+  gap: 14px;
+  border: 2px solid transparent;
+  transition: all 0.3s;
+}
+
+.avatar-frame-card.frame-active {
+  border-color: #667eea;
+  background: linear-gradient(135deg, #f8f9ff 0%, #fff5fb 100%);
+}
+
+.frame-preview {
+  width: 90px;
+  height: 90px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  position: relative;
+}
+
+.frame-avatar {
+  width: 70px;
+  height: 70px;
+  border-radius: 50%;
+  border: 4px solid;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.frame-avatar-emoji {
+  font-size: 36px;
+}
+
+.frame-rarity {
+  position: absolute;
+  top: 0;
+  right: 0;
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.9);
+  color: #666;
+  font-weight: bold;
+}
+
+.frame-rarity.rarity-rare {
+  background: linear-gradient(135deg, #ffd700, #ffb700);
+  color: #fff;
+}
+
+.frame-rarity.rarity-legendary {
+  background: linear-gradient(135deg, #ff6b6b, #ee5a6f, #c44569);
+  color: #fff;
+  box-shadow: 0 0 8px rgba(238, 90, 111, 0.5);
+}
+
+.frame-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.frame-name-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.frame-name {
+  font-size: 16px;
+  font-weight: bold;
+  color: #333;
+}
+
+.frame-desc {
+  font-size: 12px;
+  color: #888;
+  line-height: 1.4;
+  margin-bottom: 8px;
+}
+
+.frame-price-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.frame-price {
+  font-size: 16px;
+  font-weight: bold;
+  color: #ff9800;
+}
+
+.frame-permanent {
+  font-size: 11px;
+  color: #07c160;
+  background: #f6ffed;
+  padding: 2px 8px;
+  border-radius: 8px;
+}
+
+.frame-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: auto;
+}
+
+.frame-actions .van-button {
+  flex: 1;
+}
+
+.chat-skin-list {
+  margin-top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.chat-skin-card {
+  background: #fff;
+  border-radius: 16px;
+  padding: 16px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+  display: flex;
+  gap: 14px;
+  border: 2px solid transparent;
+  transition: all 0.3s;
+}
+
+.chat-skin-card.chat-skin-active {
+  border-color: #667eea;
+  background: linear-gradient(135deg, #f8f9ff 0%, #fff5fb 100%);
+}
+
+.chat-skin-preview {
+  width: 100px;
+  height: 100px;
+  border-radius: 12px;
+  flex-shrink: 0;
+  position: relative;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border: 1px solid #eee;
+}
+
+.chat-skin-bubble {
+  max-width: 70%;
+  padding: 6px 10px;
+  border-radius: 12px;
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.chat-skin-bubble.mine {
+  align-self: flex-end;
+  border-bottom-right-radius: 4px;
+}
+
+.chat-skin-bubble.other {
+  align-self: flex-start;
+  border-bottom-left-radius: 4px;
+}
+
+.chat-skin-rarity {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  font-size: 9px;
+  padding: 1px 5px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.9);
+  color: #666;
+  font-weight: bold;
+}
+
+.chat-skin-rarity.rarity-rare {
+  background: linear-gradient(135deg, #ffd700, #ffb700);
+  color: #fff;
+}
+
+.chat-skin-rarity.rarity-legendary {
+  background: linear-gradient(135deg, #ff6b6b, #ee5a6f, #c44569);
+  color: #fff;
+  box-shadow: 0 0 6px rgba(238, 90, 111, 0.5);
+}
+
+.chat-skin-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.chat-skin-name-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.chat-skin-name {
+  font-size: 16px;
+  font-weight: bold;
+  color: #333;
+}
+
+.chat-skin-desc {
+  font-size: 12px;
+  color: #888;
+  line-height: 1.4;
+  margin-bottom: 8px;
+}
+
+.chat-skin-price-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.chat-skin-price {
+  font-size: 16px;
+  font-weight: bold;
+  color: #ff9800;
+}
+
+.chat-skin-permanent {
+  font-size: 11px;
+  color: #07c160;
+  background: #f6ffed;
+  padding: 2px 8px;
+  border-radius: 8px;
+}
+
+.chat-skin-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: auto;
+}
+
+.chat-skin-actions .van-button {
+  flex: 1;
 }
 </style>

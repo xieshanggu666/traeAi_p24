@@ -21,10 +21,19 @@
       <div class="avatar-section" @click="showAvatarPicker = true">
         <div class="avatar-label">头像</div>
         <div class="avatar-right">
-          <AvatarDisplay :avatar="form.avatar" :size="50" />
+          <div class="avatar-frame-wrapper">
+            <AvatarDisplay :avatar="form.avatar" :size="50" :avatarFrame="currentAvatarFrame" />
+          </div>
           <van-icon name="arrow" color="#999" />
         </div>
       </div>
+
+      <van-cell
+        title="头像框"
+        :value="currentAvatarFrame?.name || '默认'"
+        is-link
+        @click="showAvatarFramePicker = true"
+      />
 
       <van-cell
         title="昵称"
@@ -112,6 +121,51 @@
     </van-popup>
 
     <van-popup
+      v-model:show="showAvatarFramePicker"
+      position="bottom"
+      round
+      :style="{ maxHeight: '70vh' }"
+    >
+      <div class="avatar-frame-picker">
+        <div class="avatar-frame-picker-header">
+          <span>选择头像框</span>
+          <van-icon name="cross" size="18" @click="showAvatarFramePicker = false" />
+        </div>
+        <div class="avatar-frame-grid">
+          <div
+            class="avatar-frame-item default-frame"
+            :class="{ active: !selectedAvatarFrameId }"
+            @click="selectAvatarFrame(null)"
+          >
+            <div class="frame-avatar-preview default">
+              <span class="frame-emoji">😊</span>
+            </div>
+            <span class="frame-name">默认</span>
+          </div>
+          <div
+            v-for="frame in myAvatarFrames"
+            :key="frame.frame_id || frame.id"
+            class="avatar-frame-item"
+            :class="{ active: selectedAvatarFrameId === (frame.frame_id || frame.id) }"
+            @click="selectAvatarFrame(frame.frame_id || frame.id)"
+          >
+            <div class="frame-avatar-preview" :style="getFrameStyle(frame)">
+              <span class="frame-emoji">😊</span>
+            </div>
+            <span class="frame-name">{{ frame.name }}</span>
+          </div>
+        </div>
+        <div class="avatar-frame-footer" v-if="myAvatarFrames.length === 0">
+          <span>暂无头像框，去商城购买吧~</span>
+          <van-button size="small" type="primary" round @click="goToShop">去商城</van-button>
+        </div>
+        <div class="avatar-frame-confirm">
+          <van-button type="primary" block round @click="confirmAvatarFrame">确认使用</van-button>
+        </div>
+      </div>
+    </van-popup>
+
+    <van-popup
       v-model:show="showNicknameEditor"
       position="bottom"
       round
@@ -188,7 +242,7 @@
 import { ref, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { showToast } from 'vant';
-import { getUserInfo, updateProfile, uploadAvatar } from '../api';
+import { getUserInfo, updateProfile, uploadAvatar, getMyAvatarFrames, useAvatarFrame } from '../api';
 import { getUser, setUser } from '../utils/storage';
 import AvatarDisplay from '../components/AvatarDisplay.vue';
 
@@ -220,10 +274,15 @@ const form = ref({
 const saving = ref(false);
 const uploading = ref(false);
 const showAvatarPicker = ref(false);
+const showAvatarFramePicker = ref(false);
 const showNicknameEditor = ref(false);
 const showGenderPicker = ref(false);
 const showBirthdayPicker = ref(false);
 const showBioEditor = ref(false);
+
+const myAvatarFrames = ref([]);
+const selectedAvatarFrameId = ref(null);
+const currentAvatarFrame = ref(null);
 
 const tempNickname = ref('');
 const tempBio = ref('');
@@ -267,6 +326,8 @@ onMounted(async () => {
         String(d.getDate()).padStart(2, '0')
       ];
     }
+
+    fetchMyAvatarFrames();
   } catch (error) {
     console.error('获取用户信息失败:', error);
   }
@@ -290,6 +351,48 @@ function openBioEditor() {
 function selectAvatar(item) {
   form.value.avatar = item;
   showAvatarPicker.value = false;
+}
+
+async function fetchMyAvatarFrames() {
+  try {
+    const result = await getMyAvatarFrames();
+    myAvatarFrames.value = result.frames || [];
+    currentAvatarFrame.value = result.activeFrame || null;
+    selectedAvatarFrameId.value = result.activeFrame?.id || null;
+  } catch (error) {
+    console.error('获取头像框失败:', error);
+  }
+}
+
+function getFrameStyle(frame) {
+  return {
+    borderColor: frame.border_color,
+    boxShadow: `0 0 8px ${frame.shadow_color || frame.border_color}60`,
+    background: `linear-gradient(135deg, ${frame.gradient_from} 0%, ${frame.gradient_to} 100%)`
+  };
+}
+
+function selectAvatarFrame(frameId) {
+  selectedAvatarFrameId.value = frameId;
+}
+
+async function confirmAvatarFrame() {
+  try {
+    if (selectedAvatarFrameId.value) {
+      await useAvatarFrame(selectedAvatarFrameId.value);
+    } else {
+      await useAvatarFrame('');
+    }
+    await fetchMyAvatarFrames();
+    showAvatarFramePicker.value = false;
+    showToast('切换成功');
+  } catch (error) {
+    showToast(error.businessMessage || error.httpMessage || '切换失败');
+  }
+}
+
+function goToShop() {
+  router.push('/shop');
 }
 
 function triggerFileUpload() {
@@ -552,5 +655,92 @@ function goBack() {
 :deep(.van-cell::after) {
   left: 16px;
   right: 16px;
+}
+
+.avatar-frame-wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.avatar-frame-picker {
+  padding: 16px;
+}
+
+.avatar-frame-picker-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  font-size: 16px;
+  font-weight: bold;
+  color: #333;
+}
+
+.avatar-frame-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.avatar-frame-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 8px;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+  border: 2px solid transparent;
+}
+
+.avatar-frame-item:active {
+  transform: scale(0.95);
+}
+
+.avatar-frame-item.active {
+  border-color: #1989fa;
+  background: #e8f4fd;
+}
+
+.frame-avatar-preview {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 3px solid;
+  position: relative;
+}
+
+.frame-avatar-preview.default {
+  border-color: #ddd;
+  background: #f5f5f5;
+}
+
+.frame-emoji {
+  font-size: 28px;
+}
+
+.frame-name {
+  font-size: 12px;
+  color: #666;
+}
+
+.avatar-frame-footer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 20px;
+  color: #999;
+  font-size: 14px;
+}
+
+.avatar-frame-confirm {
+  padding-top: 8px;
 }
 </style>

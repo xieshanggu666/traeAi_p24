@@ -260,3 +260,35 @@ export const getBlacklist = () => {
 export const checkBlockStatus = (otherUserId) => {
   return request.get(`/user/blacklist/check/${otherUserId}`);
 };
+
+export const getAvatarFrames = () => {
+  return request.get('/shop/avatar-frames');
+};
+
+export const buyAvatarFrame = (frameId) => {
+  return request.post('/shop/avatar-frames/buy', { frameId });
+};
+
+export const useAvatarFrame = (frameId) => {
+  return request.post('/shop/avatar-frames/use', { frameId });
+};
+
+export const getMyAvatarFrames = () => {
+  return request.get('/shop/avatar-frames/mine');
+};
+
+export const getChatSkins = () => {
+  return request.get('/shop/chat-skins');
+};
+
+export const buyChatSkin = (skinId) => {
+  return request.post('/shop/chat-skins/buy', { skinId });
+};
+
+export const useChatSkin = (skinId) => {
+  return request.post('/shop/chat-skins/use', { skinId });
+};
+
+export const getMyChatSkins = () => {
+  return request.get('/shop/chat-skins/mine');
+};

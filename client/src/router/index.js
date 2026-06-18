@@ -91,6 +91,12 @@ const routes = [
     name: 'Blacklist',
     component: () => import('../views/Blacklist.vue'),
     meta: { title: '黑名单', requiresAuth: true }
+  },
+  {
+    path: '/chat-settings',
+    name: 'ChatSettings',
+    component: () => import('../views/ChatSettings.vue'),
+    meta: { title: '聊天设置', requiresAuth: true }
   }
 ];
 

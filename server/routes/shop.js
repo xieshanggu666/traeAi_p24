@@ -3,6 +3,7 @@ const router = express.Router();
 const pool = require('../config/db');
 const { generateUUID, generateResponse } = require('../utils/helper');
 const { SKIN_PRICES, DURATION_HOURS } = require('../config/migrateSkins');
+const { PRICE as AVATAR_FRAME_PRICE } = require('../config/migrateAvatarAndChatSkins');
 const { isBlockedBy, hasBlocked } = require('./user');
 
 let hasMsgTypeColumn = null;
@@ -1104,6 +1105,518 @@ async function getSkinById(skinId, conn) {
   }
 }
 
+router.get('/avatar-frames', async (req, res) => {
+  try {
+    const userId = req.user.userId;
+
+    const [frames] = await pool.execute(`
+      SELECT * FROM avatar_frames WHERE is_active = 1 ORDER BY 
+        CASE rarity 
+          WHEN 'legendary' THEN 1 
+          WHEN 'rare' THEN 2 
+          ELSE 3 
+        END, created_at DESC
+    `);
+
+    const [userFrames] = await pool.execute(`
+      SELECT frame_id, is_active
+      FROM user_avatar_frames
+      WHERE user_id = ?
+    `, [userId]);
+
+    const userFrameMap = {};
+    userFrames.forEach(uf => {
+      userFrameMap[uf.frame_id] = {
+        owned: true,
+        isActive: uf.is_active === 1
+      };
+    });
+
+    const framesWithStatus = frames.map(frame => ({
+      ...frame,
+      price: AVATAR_FRAME_PRICE,
+      owned: !!userFrameMap[frame.id],
+      isActive: userFrameMap[frame.id]?.isActive || false
+    }));
+
+    res.json(generateResponse(true, {
+      frames: framesWithStatus,
+      price: AVATAR_FRAME_PRICE
+    }, '获取头像框列表成功'));
+  } catch (error) {
+    console.error('获取头像框列表失败:', error);
+    res.status(500).json(generateResponse(false, null, '获取头像框列表失败'));
+  }
+});
+
+router.post('/avatar-frames/buy', async (req, res) => {
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+
+    const userId = req.user.userId;
+    const { frameId } = req.body;
+
+    if (!frameId) {
+      await connection.rollback();
+      return res.status(400).json(generateResponse(false, null, '参数不完整'));
+    }
+
+    const [frames] = await connection.execute(
+      'SELECT * FROM avatar_frames WHERE id = ? AND is_active = 1',
+      [frameId]
+    );
+    if (frames.length === 0) {
+      await connection.rollback();
+      return res.status(404).json(generateResponse(false, null, '头像框不存在或已下架'));
+    }
+    const frame = frames[0];
+
+    const [existingUserFrame] = await connection.execute(
+      'SELECT id FROM user_avatar_frames WHERE user_id = ? AND frame_id = ?',
+      [userId, frameId]
+    );
+    if (existingUserFrame.length > 0) {
+      await connection.rollback();
+      return res.status(400).json(generateResponse(false, null, '您已拥有该头像框'));
+    }
+
+    const [users] = await connection.execute(
+      'SELECT coins FROM users WHERE id = ? FOR UPDATE',
+      [userId]
+    );
+    if (users.length === 0) {
+      await connection.rollback();
+      return res.status(404).json(generateResponse(false, null, '用户不存在'));
+    }
+
+    if (users[0].coins < AVATAR_FRAME_PRICE) {
+      await connection.rollback();
+      return res.status(400).json(generateResponse(false, null, '漂流币不足'));
+    }
+
+    await connection.execute(
+      'UPDATE users SET coins = coins - ? WHERE id = ?',
+      [AVATAR_FRAME_PRICE, userId]
+    );
+
+    const coinRecordId = generateUUID();
+    await connection.execute(
+      'INSERT INTO coin_records (id, user_id, amount, type, source) VALUES (?, ?, ?, ?, ?)',
+      [coinRecordId, userId, -AVATAR_FRAME_PRICE, 'shop', `购买${frame.name}头像框`]
+    );
+
+    const userFrameId = generateUUID();
+    await connection.execute(`
+      INSERT INTO user_avatar_frames (id, user_id, frame_id, price, is_active)
+      VALUES (?, ?, ?, ?, 0)
+    `, [userFrameId, userId, frameId, AVATAR_FRAME_PRICE]);
+
+    const purchaseId = generateUUID();
+    await connection.execute(
+      'INSERT INTO shop_purchases (id, user_id, item_key, price) VALUES (?, ?, ?, ?)',
+      [purchaseId, userId, `avatar_frame_${frameId}`, AVATAR_FRAME_PRICE]
+    );
+
+    await connection.commit();
+
+    const [updatedUser] = await pool.execute(
+      'SELECT coins FROM users WHERE id = ?',
+      [userId]
+    );
+
+    res.json(generateResponse(true, {
+      frameId: frame.id,
+      frameName: frame.name,
+      price: AVATAR_FRAME_PRICE,
+      remainingCoins: updatedUser[0].coins
+    }, `成功购买${frame.name}头像框`));
+  } catch (error) {
+    await connection.rollback();
+    console.error('购买头像框失败:', error);
+    res.status(500).json(generateResponse(false, null, '购买头像框失败'));
+  } finally {
+    connection.release();
+  }
+});
+
+router.post('/avatar-frames/use', async (req, res) => {
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+
+    const userId = req.user.userId;
+    let { frameId } = req.body;
+
+    if (frameId === undefined || frameId === null) {
+      await connection.rollback();
+      return res.status(400).json(generateResponse(false, null, '参数不完整'));
+    }
+
+    frameId = frameId || '';
+
+    if (frameId) {
+      const [userFrame] = await connection.execute(
+        'SELECT id FROM user_avatar_frames WHERE user_id = ? AND frame_id = ? FOR UPDATE',
+        [userId, frameId]
+      );
+      if (userFrame.length === 0) {
+        await connection.rollback();
+        return res.status(400).json(generateResponse(false, null, '您还未拥有该头像框'));
+      }
+    }
+
+    await connection.execute(
+      'UPDATE user_avatar_frames SET is_active = 0 WHERE user_id = ?',
+      [userId]
+    );
+
+    if (frameId) {
+      await connection.execute(
+        'UPDATE user_avatar_frames SET is_active = 1 WHERE user_id = ? AND frame_id = ?',
+        [userId, frameId]
+      );
+    }
+
+    await connection.execute(
+      'UPDATE users SET avatar_frame = ? WHERE id = ?',
+      [frameId || null, userId]
+    );
+
+    await connection.commit();
+
+    let activeFrame = null;
+    if (frameId) {
+      const [frameInfo] = await pool.execute(
+        'SELECT id, name, border_color, gradient_from, gradient_to, shadow_color, rarity, icon FROM avatar_frames WHERE id = ?',
+        [frameId]
+      );
+      activeFrame = frameInfo[0] || null;
+    }
+
+    res.json(generateResponse(true, {
+      activeFrame
+    }, '切换头像框成功'));
+  } catch (error) {
+    await connection.rollback();
+    console.error('切换头像框失败:', error);
+    res.status(500).json(generateResponse(false, null, '切换头像框失败'));
+  } finally {
+    connection.release();
+  }
+});
+
+router.get('/avatar-frames/mine', async (req, res) => {
+  try {
+    const userId = req.user.userId;
+
+    const [userFrames] = await pool.execute(`
+      SELECT uf.id, uf.frame_id, uf.price, uf.is_active, uf.created_at,
+             af.name, af.description, af.border_color, af.gradient_from, 
+             af.gradient_to, af.shadow_color, af.rarity, af.icon
+      FROM user_avatar_frames uf
+      LEFT JOIN avatar_frames af ON uf.frame_id = af.id
+      WHERE uf.user_id = ?
+      ORDER BY uf.is_active DESC, uf.created_at DESC
+    `, [userId]);
+
+    const activeFrame = userFrames.find(f => f.is_active === 1) || null;
+
+    res.json(generateResponse(true, {
+      frames: userFrames,
+      activeFrame: activeFrame ? {
+        id: activeFrame.frame_id,
+        name: activeFrame.name,
+        border_color: activeFrame.border_color,
+        gradient_from: activeFrame.gradient_from,
+        gradient_to: activeFrame.gradient_to,
+        shadow_color: activeFrame.shadow_color,
+        rarity: activeFrame.rarity,
+        icon: activeFrame.icon
+      } : null
+    }, '获取我的头像框成功'));
+  } catch (error) {
+    console.error('获取我的头像框失败:', error);
+    res.status(500).json(generateResponse(false, null, '获取我的头像框失败'));
+  }
+});
+
+router.get('/chat-skins', async (req, res) => {
+  try {
+    const userId = req.user.userId;
+
+    const [skins] = await pool.execute(`
+      SELECT * FROM chat_skins WHERE is_active = 1 ORDER BY 
+        CASE rarity 
+          WHEN 'legendary' THEN 1 
+          WHEN 'rare' THEN 2 
+          ELSE 3 
+        END, created_at DESC
+    `);
+
+    const [userSkins] = await pool.execute(`
+      SELECT skin_id, is_active
+      FROM user_chat_skins
+      WHERE user_id = ?
+    `, [userId]);
+
+    const userSkinMap = {};
+    userSkins.forEach(us => {
+      userSkinMap[us.skin_id] = {
+        owned: true,
+        isActive: us.is_active === 1
+      };
+    });
+
+    const skinsWithStatus = skins.map(skin => ({
+      ...skin,
+      price: AVATAR_FRAME_PRICE,
+      owned: !!userSkinMap[skin.id],
+      isActive: userSkinMap[skin.id]?.isActive || false
+    }));
+
+    res.json(generateResponse(true, {
+      skins: skinsWithStatus,
+      price: AVATAR_FRAME_PRICE
+    }, '获取聊天皮肤列表成功'));
+  } catch (error) {
+    console.error('获取聊天皮肤列表失败:', error);
+    res.status(500).json(generateResponse(false, null, '获取聊天皮肤列表失败'));
+  }
+});
+
+router.post('/chat-skins/buy', async (req, res) => {
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+
+    const userId = req.user.userId;
+    const { skinId } = req.body;
+
+    if (!skinId) {
+      await connection.rollback();
+      return res.status(400).json(generateResponse(false, null, '参数不完整'));
+    }
+
+    const [skins] = await connection.execute(
+      'SELECT * FROM chat_skins WHERE id = ? AND is_active = 1',
+      [skinId]
+    );
+    if (skins.length === 0) {
+      await connection.rollback();
+      return res.status(404).json(generateResponse(false, null, '聊天皮肤不存在或已下架'));
+    }
+    const skin = skins[0];
+
+    const [existingUserSkin] = await connection.execute(
+      'SELECT id FROM user_chat_skins WHERE user_id = ? AND skin_id = ?',
+      [userId, skinId]
+    );
+    if (existingUserSkin.length > 0) {
+      await connection.rollback();
+      return res.status(400).json(generateResponse(false, null, '您已拥有该聊天皮肤'));
+    }
+
+    const [users] = await connection.execute(
+      'SELECT coins FROM users WHERE id = ? FOR UPDATE',
+      [userId]
+    );
+    if (users.length === 0) {
+      await connection.rollback();
+      return res.status(404).json(generateResponse(false, null, '用户不存在'));
+    }
+
+    if (users[0].coins < AVATAR_FRAME_PRICE) {
+      await connection.rollback();
+      return res.status(400).json(generateResponse(false, null, '漂流币不足'));
+    }
+
+    await connection.execute(
+      'UPDATE users SET coins = coins - ? WHERE id = ?',
+      [AVATAR_FRAME_PRICE, userId]
+    );
+
+    const coinRecordId = generateUUID();
+    await connection.execute(
+      'INSERT INTO coin_records (id, user_id, amount, type, source) VALUES (?, ?, ?, ?, ?)',
+      [coinRecordId, userId, -AVATAR_FRAME_PRICE, 'shop', `购买${skin.name}聊天皮肤`]
+    );
+
+    const userSkinId = generateUUID();
+    await connection.execute(`
+      INSERT INTO user_chat_skins (id, user_id, skin_id, price, is_active)
+      VALUES (?, ?, ?, ?, 0)
+    `, [userSkinId, userId, skinId, AVATAR_FRAME_PRICE]);
+
+    const purchaseId = generateUUID();
+    await connection.execute(
+      'INSERT INTO shop_purchases (id, user_id, item_key, price) VALUES (?, ?, ?, ?)',
+      [purchaseId, userId, `chat_skin_${skinId}`, AVATAR_FRAME_PRICE]
+    );
+
+    await connection.commit();
+
+    const [updatedUser] = await pool.execute(
+      'SELECT coins FROM users WHERE id = ?',
+      [userId]
+    );
+
+    res.json(generateResponse(true, {
+      skinId: skin.id,
+      skinName: skin.name,
+      price: AVATAR_FRAME_PRICE,
+      remainingCoins: updatedUser[0].coins
+    }, `成功购买${skin.name}聊天皮肤`));
+  } catch (error) {
+    await connection.rollback();
+    console.error('购买聊天皮肤失败:', error);
+    res.status(500).json(generateResponse(false, null, '购买聊天皮肤失败'));
+  } finally {
+    connection.release();
+  }
+});
+
+router.post('/chat-skins/use', async (req, res) => {
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+
+    const userId = req.user.userId;
+    let { skinId } = req.body;
+
+    if (skinId === undefined || skinId === null) {
+      await connection.rollback();
+      return res.status(400).json(generateResponse(false, null, '参数不完整'));
+    }
+
+    skinId = skinId || '';
+
+    if (skinId) {
+      const [userSkin] = await connection.execute(
+        'SELECT id FROM user_chat_skins WHERE user_id = ? AND skin_id = ? FOR UPDATE',
+        [userId, skinId]
+      );
+      if (userSkin.length === 0) {
+        await connection.rollback();
+        return res.status(400).json(generateResponse(false, null, '您还未拥有该聊天皮肤'));
+      }
+    }
+
+    await connection.execute(
+      'UPDATE user_chat_skins SET is_active = 0 WHERE user_id = ?',
+      [userId]
+    );
+
+    if (skinId) {
+      await connection.execute(
+        'UPDATE user_chat_skins SET is_active = 1 WHERE user_id = ? AND skin_id = ?',
+        [userId, skinId]
+      );
+    }
+
+    await connection.execute(
+      'UPDATE users SET chat_skin = ? WHERE id = ?',
+      [skinId || null, userId]
+    );
+
+    await connection.commit();
+
+    let activeSkin = null;
+    if (skinId) {
+      const [skinInfo] = await pool.execute(
+        'SELECT id, name, bg_color, bubble_bg_other, bubble_bg_mine, text_color_mine, text_color_other, border_color, rarity, icon FROM chat_skins WHERE id = ?',
+        [skinId]
+      );
+      activeSkin = skinInfo[0] || null;
+    }
+
+    res.json(generateResponse(true, {
+      activeSkin
+    }, '切换聊天皮肤成功'));
+  } catch (error) {
+    await connection.rollback();
+    console.error('切换聊天皮肤失败:', error);
+    res.status(500).json(generateResponse(false, null, '切换聊天皮肤失败'));
+  } finally {
+    connection.release();
+  }
+});
+
+router.get('/chat-skins/mine', async (req, res) => {
+  try {
+    const userId = req.user.userId;
+
+    const [userSkins] = await pool.execute(`
+      SELECT us.id, us.skin_id, us.price, us.is_active, us.created_at,
+             cs.name, cs.description, cs.bg_color, cs.bubble_bg_other, 
+             cs.bubble_bg_mine, cs.text_color_mine, cs.text_color_other, 
+             cs.border_color, cs.rarity, cs.icon
+      FROM user_chat_skins us
+      LEFT JOIN chat_skins cs ON us.skin_id = cs.id
+      WHERE us.user_id = ?
+      ORDER BY us.is_active DESC, us.created_at DESC
+    `, [userId]);
+
+    const activeSkin = userSkins.find(s => s.is_active === 1) || null;
+
+    res.json(generateResponse(true, {
+      skins: userSkins,
+      activeSkin: activeSkin ? {
+        id: activeSkin.skin_id,
+        name: activeSkin.name,
+        bg_color: activeSkin.bg_color,
+        bubble_bg_other: activeSkin.bubble_bg_other,
+        bubble_bg_mine: activeSkin.bubble_bg_mine,
+        text_color_mine: activeSkin.text_color_mine,
+        text_color_other: activeSkin.text_color_other,
+        border_color: activeSkin.border_color,
+        rarity: activeSkin.rarity,
+        icon: activeSkin.icon
+      } : null
+    }, '获取我的聊天皮肤成功'));
+  } catch (error) {
+    console.error('获取我的聊天皮肤失败:', error);
+    res.status(500).json(generateResponse(false, null, '获取我的聊天皮肤失败'));
+  }
+});
+
+async function getUserActiveAvatarFrame(userId, conn) {
+  const db = conn || pool;
+  try {
+    const [rows] = await db.execute(`
+      SELECT af.id, af.name, af.border_color, af.gradient_from, af.gradient_to, af.shadow_color, af.rarity, af.icon
+      FROM user_avatar_frames uf
+      LEFT JOIN avatar_frames af ON uf.frame_id = af.id
+      WHERE uf.user_id = ? AND uf.is_active = 1
+      LIMIT 1
+    `, [userId]);
+    return rows.length > 0 ? rows[0] : null;
+  } catch (error) {
+    console.error('获取用户当前头像框失败:', error);
+    return null;
+  }
+}
+
+async function getUserActiveChatSkin(userId, conn) {
+  const db = conn || pool;
+  try {
+    const [rows] = await db.execute(`
+      SELECT cs.id, cs.name, cs.bg_color, cs.bubble_bg_other, cs.bubble_bg_mine, 
+             cs.text_color_mine, cs.text_color_other, cs.border_color, cs.rarity, cs.icon
+      FROM user_chat_skins us
+      LEFT JOIN chat_skins cs ON us.skin_id = cs.id
+      WHERE us.user_id = ? AND us.is_active = 1
+      LIMIT 1
+    `, [userId]);
+    return rows.length > 0 ? rows[0] : null;
+  } catch (error) {
+    console.error('获取用户当前聊天皮肤失败:', error);
+    return null;
+  }
+}
+
 module.exports = router;
 module.exports.getUserActiveSkin = getUserActiveSkin;
 module.exports.getSkinById = getSkinById;
+module.exports.getUserActiveAvatarFrame = getUserActiveAvatarFrame;
+module.exports.getUserActiveChatSkin = getUserActiveChatSkin;
