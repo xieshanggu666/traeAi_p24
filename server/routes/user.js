@@ -717,4 +717,64 @@ router.get('/blacklist/check/:otherUserId', authenticateToken, async (req, res) 
   }
 });
 
+router.get('/rank/wealth', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+
+    const [users] = await pool.execute(`
+      SELECT id, nickname, avatar, coins, charm
+      FROM users
+      ORDER BY coins DESC
+      LIMIT 10
+    `);
+
+    const [myRankResult] = await pool.execute(`
+      SELECT COUNT(*) as rank FROM users WHERE coins > (SELECT coins FROM users WHERE id = ?)
+    `, [userId]);
+
+    const [myInfo] = await pool.execute(`
+      SELECT id, nickname, avatar, coins, charm FROM users WHERE id = ?
+    `, [userId]);
+
+    res.json(generateResponse(true, {
+      list: users,
+      myRank: myRankResult[0].rank + 1,
+      myInfo: myInfo[0]
+    }, '获取财富排行榜成功'));
+  } catch (error) {
+    console.error('获取财富排行榜失败:', error);
+    res.status(500).json(generateResponse(false, null, '获取财富排行榜失败'));
+  }
+});
+
+router.get('/rank/charm', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+
+    const [users] = await pool.execute(`
+      SELECT id, nickname, avatar, coins, charm
+      FROM users
+      ORDER BY charm DESC
+      LIMIT 10
+    `);
+
+    const [myRankResult] = await pool.execute(`
+      SELECT COUNT(*) as rank FROM users WHERE charm > (SELECT charm FROM users WHERE id = ?)
+    `, [userId]);
+
+    const [myInfo] = await pool.execute(`
+      SELECT id, nickname, avatar, coins, charm FROM users WHERE id = ?
+    `, [userId]);
+
+    res.json(generateResponse(true, {
+      list: users,
+      myRank: myRankResult[0].rank + 1,
+      myInfo: myInfo[0]
+    }, '获取魅力排行榜成功'));
+  } catch (error) {
+    console.error('获取魅力排行榜失败:', error);
+    res.status(500).json(generateResponse(false, null, '获取魅力排行榜失败'));
+  }
+});
+
 module.exports = { router, authenticateToken, isBlockedBy, hasBlocked, isFriend };

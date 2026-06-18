@@ -97,6 +97,12 @@ const routes = [
     name: 'ChatSettings',
     component: () => import('../views/ChatSettings.vue'),
     meta: { title: '聊天设置', requiresAuth: true }
+  },
+  {
+    path: '/rank',
+    name: 'Rank',
+    component: () => import('../views/Rank.vue'),
+    meta: { title: '排行榜', requiresAuth: true }
   }
 ];
 

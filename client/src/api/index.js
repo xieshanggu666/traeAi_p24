@@ -292,3 +292,11 @@ export const useChatSkin = (skinId) => {
 export const getMyChatSkins = () => {
   return request.get('/shop/chat-skins/mine');
 };
+
+export const getWealthRank = () => {
+  return request.get('/user/rank/wealth');
+};
+
+export const getCharmRank = () => {
+  return request.get('/user/rank/charm');
+};

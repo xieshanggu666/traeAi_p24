@@ -10,10 +10,13 @@
             <div class="user-id">ID: {{ shortUserId }}</div>
           </div>
         </div>
-        <van-badge :content="unreadCount" v-if="unreadCount > 0" :offset="[-5, 5]">
-          <van-icon name="chat-o" size="28" color="#fff" @click="goToMessages" />
-        </van-badge>
-        <van-icon v-else name="chat-o" size="28" color="#fff" @click="goToMessages" />
+        <div class="header-icons">
+          <div class="rank-icon" @click="goToRank">🏆</div>
+          <van-badge :content="unreadCount" v-if="unreadCount > 0" :offset="[-5, 5]">
+            <van-icon name="chat-o" size="28" color="#fff" @click="goToMessages" />
+          </van-badge>
+          <van-icon v-else name="chat-o" size="28" color="#fff" @click="goToMessages" />
+        </div>
       </div>
 
       <div class="main-title">
@@ -161,6 +164,10 @@ function goToShop() {
 function goToMessages() {
   router.push('/messages');
 }
+
+function goToRank() {
+  router.push('/rank');
+}
 </script>
 
 <style scoped>
@@ -169,6 +176,18 @@ function goToMessages() {
   justify-content: space-between;
   align-items: center;
   padding: 10px 0;
+}
+
+.header-icons {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.rank-icon {
+  cursor: pointer;
+  font-size: 24px;
+  line-height: 1;
 }
 
 .user-info {
