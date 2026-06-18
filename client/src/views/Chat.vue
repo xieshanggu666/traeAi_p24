@@ -488,11 +488,11 @@ function getSelfMsgSkinStyle() {
 function getOtherMsgSkinStyle() {
   if (!otherChatSkin.value) return {};
   const style = {};
-  if (otherChatSkin.value.bubble_bg_other) {
-    style.background = otherChatSkin.value.bubble_bg_other;
+  if (otherChatSkin.value.bubble_bg_mine) {
+    style.background = otherChatSkin.value.bubble_bg_mine;
   }
-  if (otherChatSkin.value.text_color_other) {
-    style.color = otherChatSkin.value.text_color_other;
+  if (otherChatSkin.value.text_color_mine) {
+    style.color = otherChatSkin.value.text_color_mine;
   }
   return style;
 }

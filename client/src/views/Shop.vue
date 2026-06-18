@@ -19,13 +19,19 @@
         </div>
       </div>
 
-      <van-tabs v-model:active="activeCategory" class="category-tabs" animated line-width="24px">
+      <van-tabs v-model:active="activeCategory" class="category-tabs" animated line-width="24px" scrollable swipeable>
         <van-tab
           v-for="cat in categories"
           :key="cat.key"
           :name="cat.key"
-          :title="`${cat.icon} ${cat.name}`"
-        />
+        >
+          <template #title>
+            <div class="category-tab-title">
+              <span class="category-tab-icon">{{ cat.icon }}</span>
+              <span class="category-tab-text">{{ cat.name }}</span>
+            </div>
+          </template>
+        </van-tab>
       </van-tabs>
 
       <div class="product-list" v-if="!loading && (activeCategory === 'function' || activeCategory === 'gift')">
@@ -658,8 +664,29 @@ function goToBackpack() { router.push('/backpack'); }
 }
 
 .category-tabs :deep(.van-tab) {
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 500;
+  min-width: auto;
+  flex: 0 0 auto;
+  padding: 0 12px;
+}
+
+.category-tab-title {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.category-tab-icon {
+  font-size: 16px;
+  line-height: 1;
+}
+
+.category-tab-text {
+  font-size: 14px;
+  line-height: 1;
 }
 
 .product-list {
