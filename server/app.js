@@ -15,6 +15,8 @@ const { generateUUID } = require('./utils/helper');
 const { migrateSkins } = require('./config/migrateSkins');
 const { migrateMessageAdvanced } = require('./config/migrateMessageAdvanced');
 const { migrateBlacklistAndMessageFeatures } = require('./config/migrateBlacklist');
+const { migrateWelfareFields } = require('./config/migrateWelfareFields');
+const { migrateGiftsFields } = require('./config/migrateGiftsFields');
 
 async function ensureUserIntimacyTable() {
   try {
@@ -142,6 +144,18 @@ app.listen(PORT, async () => {
   
   await ensureUserIntimacyTable();
   await migrateBottleIntimacyToUser();
+  
+  try {
+    await migrateWelfareFields();
+  } catch (error) {
+    console.error('福利字段迁移失败，但服务继续运行:', error.message);
+  }
+  
+  try {
+    await migrateGiftsFields();
+  } catch (error) {
+    console.error('礼物字段迁移失败，但服务继续运行:', error.message);
+  }
   
   try {
     await migrateSkins();

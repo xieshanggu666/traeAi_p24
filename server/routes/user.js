@@ -721,29 +721,47 @@ router.get('/rank/wealth', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.userId;
 
+    const [columns] = await pool.execute(`
+      SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS 
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' 
+      AND COLUMN_NAME IN ('coins', 'charm')
+    `);
+    const hasCoins = columns.some(c => c.COLUMN_NAME === 'coins');
+    const hasCharm = columns.some(c => c.COLUMN_NAME === 'charm');
+    const coinsField = hasCoins ? 'coins' : '0 as coins';
+    const charmField = hasCharm ? 'charm' : '0 as charm';
+
     const [users] = await pool.execute(`
-      SELECT id, nickname, avatar, coins, charm
+      SELECT id, nickname, avatar, ${coinsField}, ${charmField}
       FROM users
-      ORDER BY coins DESC
+      ORDER BY ${hasCoins ? 'coins' : 'id'} DESC
       LIMIT 10
     `);
 
-    const [myRankResult] = await pool.execute(`
-      SELECT COUNT(*) as rank FROM users WHERE coins > (SELECT coins FROM users WHERE id = ?)
-    `, [userId]);
+    let myRank = 1;
+    if (hasCoins) {
+      try {
+        const [myRankResult] = await pool.execute(`
+          SELECT COUNT(*) as rank FROM users WHERE coins > (SELECT coins FROM users WHERE id = ?)
+        `, [userId]);
+        myRank = myRankResult[0].rank + 1;
+      } catch (e) {
+        myRank = 1;
+      }
+    }
 
-    const [myInfo] = await pool.execute(`
-      SELECT id, nickname, avatar, coins, charm FROM users WHERE id = ?
+    const [myInfoResult] = await pool.execute(`
+      SELECT id, nickname, avatar, ${coinsField}, ${charmField} FROM users WHERE id = ?
     `, [userId]);
 
     res.json(generateResponse(true, {
       list: users,
-      myRank: myRankResult[0].rank + 1,
-      myInfo: myInfo[0]
+      myRank: myRank,
+      myInfo: myInfoResult[0] || null
     }, '获取财富排行榜成功'));
   } catch (error) {
     console.error('获取财富排行榜失败:', error);
-    res.status(500).json(generateResponse(false, null, '获取财富排行榜失败'));
+    res.status(500).json(generateResponse(false, null, '获取财富排行榜失败: ' + error.message));
   }
 });
 
@@ -751,29 +769,47 @@ router.get('/rank/charm', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.userId;
 
+    const [columns] = await pool.execute(`
+      SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS 
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' 
+      AND COLUMN_NAME IN ('coins', 'charm')
+    `);
+    const hasCoins = columns.some(c => c.COLUMN_NAME === 'coins');
+    const hasCharm = columns.some(c => c.COLUMN_NAME === 'charm');
+    const coinsField = hasCoins ? 'coins' : '0 as coins';
+    const charmField = hasCharm ? 'charm' : '0 as charm';
+
     const [users] = await pool.execute(`
-      SELECT id, nickname, avatar, coins, charm
+      SELECT id, nickname, avatar, ${coinsField}, ${charmField}
       FROM users
-      ORDER BY charm DESC
+      ORDER BY ${hasCharm ? 'charm' : 'id'} DESC
       LIMIT 10
     `);
 
-    const [myRankResult] = await pool.execute(`
-      SELECT COUNT(*) as rank FROM users WHERE charm > (SELECT charm FROM users WHERE id = ?)
-    `, [userId]);
+    let myRank = 1;
+    if (hasCharm) {
+      try {
+        const [myRankResult] = await pool.execute(`
+          SELECT COUNT(*) as rank FROM users WHERE charm > (SELECT charm FROM users WHERE id = ?)
+        `, [userId]);
+        myRank = myRankResult[0].rank + 1;
+      } catch (e) {
+        myRank = 1;
+      }
+    }
 
-    const [myInfo] = await pool.execute(`
-      SELECT id, nickname, avatar, coins, charm FROM users WHERE id = ?
+    const [myInfoResult] = await pool.execute(`
+      SELECT id, nickname, avatar, ${coinsField}, ${charmField} FROM users WHERE id = ?
     `, [userId]);
 
     res.json(generateResponse(true, {
       list: users,
-      myRank: myRankResult[0].rank + 1,
-      myInfo: myInfo[0]
+      myRank: myRank,
+      myInfo: myInfoResult[0] || null
     }, '获取魅力排行榜成功'));
   } catch (error) {
     console.error('获取魅力排行榜失败:', error);
-    res.status(500).json(generateResponse(false, null, '获取魅力排行榜失败'));
+    res.status(500).json(generateResponse(false, null, '获取魅力排行榜失败: ' + error.message));
   }
 });
 

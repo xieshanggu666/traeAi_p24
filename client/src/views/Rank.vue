@@ -12,15 +12,15 @@
         <van-tab title="财富榜" name="wealth">
           <div class="my-rank-card">
             <div class="my-rank-info">
-              <AvatarDisplay :avatar="wealthRank.myInfo?.avatar" :size="46" class="my-avatar" />
+              <AvatarDisplay :avatar="user?.avatar" :size="46" :avatarFrame="userAvatarFrame" class="my-avatar" />
               <div class="my-rank-detail">
-                <div class="my-nickname">{{ wealthRank.myInfo?.nickname }}</div>
+                <div class="my-nickname">{{ user?.nickname || wealthRank.myInfo?.nickname }}</div>
                 <div class="my-rank-label">我的排名</div>
               </div>
             </div>
             <div class="my-rank-value">
               <div class="my-rank-num">{{ wealthRank.myRank }}</div>
-              <div class="my-coins">🪙 {{ wealthRank.myInfo?.coins || 0 }}</div>
+              <div class="my-coins">🪙 {{ user?.coins ?? wealthRank.myInfo?.coins ?? 0 }}</div>
             </div>
           </div>
 
@@ -45,15 +45,15 @@
         <van-tab title="魅力榜" name="charm">
           <div class="my-rank-card">
             <div class="my-rank-info">
-              <AvatarDisplay :avatar="charmRank.myInfo?.avatar" :size="46" class="my-avatar" />
+              <AvatarDisplay :avatar="user?.avatar" :size="46" :avatarFrame="userAvatarFrame" class="my-avatar" />
               <div class="my-rank-detail">
-                <div class="my-nickname">{{ charmRank.myInfo?.nickname }}</div>
+                <div class="my-nickname">{{ user?.nickname || charmRank.myInfo?.nickname }}</div>
                 <div class="my-rank-label">我的排名</div>
               </div>
             </div>
             <div class="my-rank-value">
               <div class="my-rank-num">{{ charmRank.myRank }}</div>
-              <div class="my-charm">✨ {{ charmRank.myInfo?.charm || 0 }}</div>
+              <div class="my-charm">✨ {{ user?.charm ?? charmRank.myInfo?.charm ?? 0 }}</div>
             </div>
           </div>
 
@@ -82,12 +82,15 @@
 <script setup>
 import { ref, onMounted, watch } from 'vue';
 import { useRouter } from 'vue-router';
-import { getWealthRank, getCharmRank } from '../api';
+import { getWealthRank, getCharmRank, getUserInfo, getMyAvatarFrames } from '../api';
+import { getUser, setUser } from '../utils/storage';
 import AvatarDisplay from '../components/AvatarDisplay.vue';
 
 const router = useRouter();
 const activeTab = ref('wealth');
 const loading = ref(false);
+const user = ref(null);
+const userAvatarFrame = ref(null);
 
 const wealthRank = ref({
   list: [],
@@ -102,8 +105,30 @@ const charmRank = ref({
 });
 
 onMounted(() => {
+  user.value = getUser();
+  fetchUserInfo();
   fetchWealthRank();
 });
+
+async function fetchUserInfo() {
+  try {
+    const userInfo = await getUserInfo();
+    user.value = userInfo;
+    setUser(userInfo);
+    fetchAvatarFrame();
+  } catch (error) {
+    console.error('刷新用户信息失败:', error);
+  }
+}
+
+async function fetchAvatarFrame() {
+  try {
+    const result = await getMyAvatarFrames();
+    userAvatarFrame.value = result.activeFrame || null;
+  } catch (error) {
+    console.error('获取头像框失败:', error);
+  }
+}
 
 watch(activeTab, (val) => {
   if (val === 'wealth' && wealthRank.value.list.length === 0) {
@@ -119,6 +144,9 @@ async function fetchWealthRank() {
   try {
     const result = await getWealthRank();
     wealthRank.value = result;
+    if (result.myInfo && user.value) {
+      user.value.coins = result.myInfo.coins;
+    }
   } catch (error) {
     console.error('获取财富排行榜失败:', error);
   } finally {
@@ -132,6 +160,9 @@ async function fetchCharmRank() {
   try {
     const result = await getCharmRank();
     charmRank.value = result;
+    if (result.myInfo && user.value) {
+      user.value.charm = result.myInfo.charm;
+    }
   } catch (error) {
     console.error('获取魅力排行榜失败:', error);
   } finally {
