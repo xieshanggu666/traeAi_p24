@@ -3,7 +3,8 @@ const router = express.Router();
 const pool = require('../config/db');
 const { generateUUID, generateResponse } = require('../utils/helper');
 const { SKIN_PRICES, DURATION_HOURS } = require('../config/migrateSkins');
-const { PRICE as AVATAR_FRAME_PRICE } = require('../config/migrateAvatarAndChatSkins');
+const migrateAvatarAndChatSkins = require('../config/migrateAvatarAndChatSkins');
+const AVATAR_FRAME_PRICE = migrateAvatarAndChatSkins.PRICE;
 const { isBlockedBy, hasBlocked } = require('./user');
 
 let hasMsgTypeColumn = null;
