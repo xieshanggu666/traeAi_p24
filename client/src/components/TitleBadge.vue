@@ -27,8 +27,9 @@ const badgeStyle = computed(() => {
   if (!props.title) return {};
   return {
     background: props.title.bg_gradient || props.title.bgGradient,
-    color: props.title.color || '#fff',
-    borderColor: props.title.color || 'transparent'
+    color: '#ffffff',
+    borderColor: props.title.color || 'transparent',
+    textShadow: `0 1px 2px ${props.title.color || 'rgba(0,0,0,0.3)'}`
   };
 });
 </script>

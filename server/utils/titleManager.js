@@ -377,42 +377,56 @@ async function checkAchievementTitles(userId) {
 
 async function checkContinuousCheckin(userId, days) {
   try {
-    const today = new Date();
-    const checkinDates = [];
-    
-    for (let i = 0; i < days; i++) {
-      const date = new Date(today);
-      date.setDate(date.getDate() - i);
-      const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-      checkinDates.push(dateStr);
-    }
-    
     const [rows] = await pool.execute(
-      'SELECT checkin_date FROM checkins WHERE user_id = ? AND checkin_date >= ? ORDER BY checkin_date DESC',
-      [userId, checkinDates[checkinDates.length - 1]]
+      'SELECT checkin_date FROM checkins WHERE user_id = ? ORDER BY checkin_date DESC',
+      [userId]
     );
     
-    if (rows.length < days) return false;
+    if (rows.length === 0) return false;
     
-    let continuous = 0;
-    for (let i = 0; i < days; i++) {
-      const expectedDate = checkinDates[i];
-      const found = rows.some(r => {
-        const d = typeof r.checkin_date === 'string' ? r.checkin_date.split('T')[0] : 
-                  r.checkin_date instanceof Date ? r.checkin_date.toISOString().split('T')[0] : String(r.checkin_date);
-        return d === expectedDate;
-      });
-      
-      if (found) {
-        continuous++;
-      } else if (i === 0) {
-        continue;
+    const checkinDatesSet = new Set();
+    
+    for (const row of rows) {
+      let dateStr;
+      if (typeof row.checkin_date === 'string') {
+        dateStr = row.checkin_date.split('T')[0];
+      } else if (row.checkin_date instanceof Date) {
+        const d = row.checkin_date;
+        dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
       } else {
-        break;
+        dateStr = String(row.checkin_date).split('T')[0];
       }
+      checkinDatesSet.add(dateStr);
     }
     
-    return continuous >= days;
+    const sortedDates = Array.from(checkinDatesSet).sort().reverse();
+    
+    let maxContinuous = 0;
+    let currentContinuous = 0;
+    let prevDate = null;
+    
+    for (const dateStr of sortedDates) {
+      const currentDate = new Date(dateStr);
+      
+      if (prevDate) {
+        const diffDays = Math.round((prevDate - currentDate) / (1000 * 60 * 60 * 24));
+        if (diffDays === 1) {
+          currentContinuous++;
+        } else {
+          currentContinuous = 1;
+        }
+      } else {
+        currentContinuous = 1;
+      }
+      
+      if (currentContinuous > maxContinuous) {
+        maxContinuous = currentContinuous;
+      }
+      
+      prevDate = currentDate;
+    }
+    
+    return maxContinuous >= days;
   } catch (error) {
     console.error('检查连续签到失败:', error);
     return false;
