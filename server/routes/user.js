@@ -731,22 +731,35 @@ router.get('/rank/wealth', authenticateToken, async (req, res) => {
     const coinsField = hasCoins ? 'coins' : '0 as coins';
     const charmField = hasCharm ? 'charm' : '0 as charm';
 
-    const [users] = await pool.execute(`
-      SELECT id, nickname, avatar, ${coinsField}, ${charmField}
-      FROM users
-      ORDER BY ${hasCoins ? 'coins' : 'id'} DESC
-      LIMIT 10
-    `);
+    let users = [];
+    if (hasCoins) {
+      const [result] = await pool.execute(`
+        SELECT id, nickname, avatar, ${coinsField}, ${charmField}
+        FROM users
+        WHERE coins > 0
+        ORDER BY coins DESC
+        LIMIT 10
+      `);
+      users = result;
+    }
 
-    let myRank = 1;
+    let myRank = null;
+    let myCoins = 0;
     if (hasCoins) {
       try {
-        const [myRankResult] = await pool.execute(`
-          SELECT COUNT(*) as rank FROM users WHERE coins > (SELECT coins FROM users WHERE id = ?)
+        const [myCoinsResult] = await pool.execute(`
+          SELECT coins FROM users WHERE id = ?
         `, [userId]);
-        myRank = myRankResult[0].rank + 1;
+        myCoins = myCoinsResult[0]?.coins || 0;
+
+        if (myCoins > 0) {
+          const [myRankResult] = await pool.execute(`
+            SELECT COUNT(*) as rank FROM users WHERE coins > ?
+          `, [myCoins]);
+          myRank = myRankResult[0].rank + 1;
+        }
       } catch (e) {
-        myRank = 1;
+        myRank = null;
       }
     }
 
@@ -779,22 +792,35 @@ router.get('/rank/charm', authenticateToken, async (req, res) => {
     const coinsField = hasCoins ? 'coins' : '0 as coins';
     const charmField = hasCharm ? 'charm' : '0 as charm';
 
-    const [users] = await pool.execute(`
-      SELECT id, nickname, avatar, ${coinsField}, ${charmField}
-      FROM users
-      ORDER BY ${hasCharm ? 'charm' : 'id'} DESC
-      LIMIT 10
-    `);
+    let users = [];
+    if (hasCharm) {
+      const [result] = await pool.execute(`
+        SELECT id, nickname, avatar, ${coinsField}, ${charmField}
+        FROM users
+        WHERE charm > 0
+        ORDER BY charm DESC
+        LIMIT 10
+      `);
+      users = result;
+    }
 
-    let myRank = 1;
+    let myRank = null;
+    let myCharm = 0;
     if (hasCharm) {
       try {
-        const [myRankResult] = await pool.execute(`
-          SELECT COUNT(*) as rank FROM users WHERE charm > (SELECT charm FROM users WHERE id = ?)
+        const [myCharmResult] = await pool.execute(`
+          SELECT charm FROM users WHERE id = ?
         `, [userId]);
-        myRank = myRankResult[0].rank + 1;
+        myCharm = myCharmResult[0]?.charm || 0;
+
+        if (myCharm > 0) {
+          const [myRankResult] = await pool.execute(`
+            SELECT COUNT(*) as rank FROM users WHERE charm > ?
+          `, [myCharm]);
+          myRank = myRankResult[0].rank + 1;
+        }
       } catch (e) {
-        myRank = 1;
+        myRank = null;
       }
     }
 

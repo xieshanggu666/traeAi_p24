@@ -150,7 +150,7 @@ function goToPick() {
 }
 
 function goToMy() {
-  router.push('/my');
+  router.push('/messages');
 }
 
 function goToWelfare() {

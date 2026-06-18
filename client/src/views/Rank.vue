@@ -19,7 +19,7 @@
               </div>
             </div>
             <div class="my-rank-value">
-              <div class="my-rank-num">{{ wealthRank.myRank }}</div>
+              <div class="my-rank-num" :class="{ 'no-rank': wealthRank.myRank == null }">{{ wealthRank.myRank ?? '未上榜' }}</div>
               <div class="my-coins">🪙 {{ user?.coins ?? wealthRank.myInfo?.coins ?? 0 }}</div>
             </div>
           </div>
@@ -52,7 +52,7 @@
               </div>
             </div>
             <div class="my-rank-value">
-              <div class="my-rank-num">{{ charmRank.myRank }}</div>
+              <div class="my-rank-num" :class="{ 'no-rank': charmRank.myRank == null }">{{ charmRank.myRank ?? '未上榜' }}</div>
               <div class="my-charm">✨ {{ user?.charm ?? charmRank.myInfo?.charm ?? 0 }}</div>
             </div>
           </div>
@@ -288,6 +288,12 @@ function goBack() {
   font-weight: bold;
   color: #667eea;
   line-height: 1;
+}
+
+.my-rank-num.no-rank {
+  font-size: 18px;
+  color: #999;
+  font-weight: 500;
 }
 
 .my-coins,
