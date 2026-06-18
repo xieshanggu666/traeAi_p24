@@ -12,6 +12,14 @@
             <span class="gender-icon gender-secret" v-else-if="user?.gender === '保密'">🔒</span>
             <span class="user-age" v-if="computedAge">{{ computedAge }}</span>
           </div>
+          <div class="user-title-row" v-if="userEquippedTitle" @click="goToTitles">
+            <TitleBadge :title="userEquippedTitle" size="small" />
+            <van-icon name="arrow" size="12" color="#fff" style="opacity: 0.8;" />
+          </div>
+          <div class="user-title-row no-title" v-else @click="goToTitles">
+            <span class="no-title-text">暂无称号</span>
+            <van-icon name="arrow" size="12" color="#999" />
+          </div>
           <div class="user-bio" v-if="user?.bio">{{ user.bio }}</div>
           <div class="user-no-bio" v-else>还没有个人介绍</div>
           <div class="user-coins">
@@ -38,6 +46,11 @@
         <div class="action-item" @click="goToBackpack">
           <van-icon name="bag-o" size="20" color="#07c160" />
           <span class="action-text">我的背包</span>
+          <van-icon name="arrow" size="14" color="#ccc" />
+        </div>
+        <div class="action-item" @click="goToTitles">
+          <van-icon name="medal-o" size="20" color="#ffd700" />
+          <span class="action-text">我的称号</span>
           <van-icon name="arrow" size="14" color="#ccc" />
         </div>
         <div class="action-item" @click="goToGifts">
@@ -88,14 +101,16 @@ import { ref, computed, onMounted, watch } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import { showToast } from 'vant';
 import { getUser, clearAuth, setUser } from '../utils/storage';
-import { logout, getUserInfo, getMyAvatarFrames } from '../api';
+import { logout, getUserInfo, getMyAvatarFrames, getUnreadNotificationCount } from '../api';
 import AvatarDisplay from '../components/AvatarDisplay.vue';
+import TitleBadge from '../components/TitleBadge.vue';
 
 const router = useRouter();
 const route = useRoute();
 const user = ref(null);
 const activeBottom = ref('my');
 const userAvatarFrame = ref(null);
+const userEquippedTitle = ref(null);
 
 const computedAge = computed(() => {
   if (!user.value?.birthday) return '';
@@ -130,6 +145,7 @@ async function refreshUserInfo() {
     const userInfo = await getUserInfo();
     user.value = userInfo;
     setUser(userInfo);
+    userEquippedTitle.value = userInfo.equippedTitle || null;
     fetchAvatarFrame();
   } catch (error) {
     console.error('刷新用户信息失败:', error);
@@ -164,6 +180,7 @@ function goToEditProfile() { router.push('/edit-profile'); }
 function goToMessages() { router.push('/messages'); }
 function goToShop() { router.push('/shop'); }
 function goToBackpack() { router.push('/backpack'); }
+function goToTitles() { router.push('/titles'); }
 function goToGifts() { router.push('/gifts'); }
 function goToFriends() { router.push('/friends'); }
 function goToChatSettings() { router.push('/chat-settings'); }
@@ -222,6 +239,27 @@ function goToMy() { router.push('/my'); }
   align-items: center;
   gap: 6px;
   margin-bottom: 4px;
+}
+
+.user-title-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 6px;
+  cursor: pointer;
+  padding: 2px 0;
+}
+
+.user-title-row.no-title {
+  opacity: 0.6;
+}
+
+.no-title-text {
+  font-size: 12px;
+  color: #999;
+  background: #f5f5f5;
+  padding: 2px 8px;
+  border-radius: 10px;
 }
 
 .user-nickname {

@@ -2,6 +2,7 @@ const cron = require('node-cron');
 const pool = require('../config/db');
 const { generateUUID, generateResponse } = require('./helper');
 const { logCleanup, OPERATION_TYPES } = require('./bottleLogger');
+const { grantRankTitles, removeExpiredTitles, checkAchievementTitles } = require('./titleManager');
 
 const BOTTLE_EXPIRE_DAYS = 7;
 const MAX_PICK_COUNT = 5;
@@ -143,6 +144,38 @@ async function cleanupPickLimitBottles() {
   }
 }
 
+async function processRankTitles() {
+  try {
+    console.log('[定时任务] 开始发放排行榜称号...');
+    const results = await grantRankTitles();
+    
+    if (results.wealth) {
+      console.log(`[定时任务] 财富榜第一名: ${results.wealth.nickname} (${results.wealth.id}) 获得「土豪」称号`);
+    }
+    if (results.charm) {
+      console.log(`[定时任务] 魅力榜第一名: ${results.charm.nickname} (${results.charm.id}) 获得「万人迷」称号`);
+    }
+    
+    console.log('[定时任务] 排行榜称号发放完成');
+    return { success: true, results };
+  } catch (error) {
+    console.error('[定时任务] 排行榜称号发放失败:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+async function processExpiredTitles() {
+  try {
+    console.log('[定时任务] 开始清理过期称号...');
+    const count = await removeExpiredTitles();
+    console.log(`[定时任务] 过期称号清理完成，共处理 ${count} 个过期称号`);
+    return { success: true, count };
+  } catch (error) {
+    console.error('[定时任务] 过期称号清理失败:', error);
+    return { success: false, error: error.message };
+  }
+}
+
 function startScheduledTasks() {
   const expireTask = cron.schedule('0 2 * * *', async () => {
     console.log('[定时任务] 开始执行过期瓶子清理...');
@@ -160,11 +193,29 @@ function startScheduledTasks() {
     timezone: 'Asia/Shanghai'
   });
 
+  const rankTitleTask = cron.schedule('0 0 * * *', async () => {
+    console.log('[定时任务] 开始执行每日排行榜称号发放...');
+    await processRankTitles();
+  }, {
+    scheduled: true,
+    timezone: 'Asia/Shanghai'
+  });
+
+  const expiredTitleTask = cron.schedule('0 * * * *', async () => {
+    console.log('[定时任务] 开始执行过期称号检查...');
+    await processExpiredTitles();
+  }, {
+    scheduled: true,
+    timezone: 'Asia/Shanghai'
+  });
+
   console.log('定时任务已启动');
   console.log(' - 过期瓶子清理: 每日凌晨2点执行');
   console.log(' - 捞取次数检查: 每30分钟执行一次');
+  console.log(' - 排行榜称号发放: 每日凌晨0点执行');
+  console.log(' - 过期称号检查: 每小时执行一次');
 
-  return { expireTask, pickLimitTask };
+  return { expireTask, pickLimitTask, rankTitleTask, expiredTitleTask };
 }
 
 module.exports = {
@@ -172,5 +223,7 @@ module.exports = {
   MAX_PICK_COUNT,
   cleanupExpiredBottles,
   cleanupPickLimitBottles,
+  processRankTitles,
+  processExpiredTitles,
   startScheduledTasks
 };

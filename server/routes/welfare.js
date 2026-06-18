@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const pool = require('../config/db');
 const { generateUUID, generateResponse } = require('../utils/helper');
+const { checkAchievementTitles } = require('../utils/titleManager');
 
 const ONCE_TASKS = [
   { key: 'profile_complete', name: '完成个人信息填写', reward: 50, type: 'once' },
@@ -178,7 +179,9 @@ router.post('/checkin', async (req, res) => {
 
     await addCoins(userId, 10, 'checkin', '每日签到奖励');
 
-    res.json(generateResponse(true, { amount: 10 }, '签到成功，获得10漂流币'));
+    const newTitles = await checkAchievementTitles(userId);
+
+    res.json(generateResponse(true, { amount: 10, newTitles }, '签到成功，获得10漂流币'));
   } catch (error) {
     console.error('签到失败:', error);
     res.status(500).json(generateResponse(false, null, '签到失败'));
@@ -510,7 +513,9 @@ router.post('/claim-task', async (req, res) => {
 
     await addCoins(userId, task.reward, 'task', task.name);
 
-    res.json(generateResponse(true, { amount: task.reward, taskKey }, `领取成功，获得${task.reward}漂流币`));
+    const newTitles = await checkAchievementTitles(userId);
+
+    res.json(generateResponse(true, { amount: task.reward, taskKey, newTitles }, `领取成功，获得${task.reward}漂流币`));
   } catch (error) {
     console.error('领取任务奖励失败:', error);
     res.status(500).json(generateResponse(false, null, '领取任务奖励失败'));

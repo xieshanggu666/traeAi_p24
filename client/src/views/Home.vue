@@ -7,11 +7,18 @@
           <AvatarDisplay :avatar="user?.avatar" :size="50" class="avatar" />
           <div class="user-detail">
             <div class="nickname">{{ user?.nickname }}</div>
+            <div class="user-title" v-if="userEquippedTitle">
+              <TitleBadge :title="userEquippedTitle" size="small" />
+            </div>
             <div class="user-id">ID: {{ shortUserId }}</div>
           </div>
         </div>
         <div class="header-icons">
           <div class="rank-icon" @click="goToRank">🏆</div>
+          <van-badge :content="unreadNotificationCount" v-if="unreadNotificationCount > 0" :offset="[-5, 5]">
+            <van-icon name="bell" size="28" color="#fff" @click="goToNotifications" />
+          </van-badge>
+          <van-icon v-else name="bell" size="28" color="#fff" @click="goToNotifications" />
           <van-badge :content="unreadCount" v-if="unreadCount > 0" :offset="[-5, 5]">
             <van-icon name="chat-o" size="28" color="#fff" @click="goToMessages" />
           </van-badge>
@@ -72,14 +79,17 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { getUser } from '../utils/storage';
-import { getUnreadCount, getMySkins } from '../api';
+import { getUnreadCount, getMySkins, getEquippedTitle, getUnreadNotificationCount } from '../api';
 import AvatarDisplay from '../components/AvatarDisplay.vue';
+import TitleBadge from '../components/TitleBadge.vue';
 
 const router = useRouter();
 const user = ref(null);
 const unreadCount = ref(0);
+const unreadNotificationCount = ref(0);
 const active = ref('home');
 const activeSkin = ref(null);
+const userEquippedTitle = ref(null);
 let timer = null;
 
 const shortUserId = computed(() => {
@@ -116,7 +126,12 @@ onMounted(() => {
   user.value = getUser();
   fetchUnreadCount();
   fetchMySkin();
-  timer = setInterval(fetchUnreadCount, 10000);
+  fetchEquippedTitle();
+  fetchUnreadNotificationCount();
+  timer = setInterval(() => {
+    fetchUnreadCount();
+    fetchUnreadNotificationCount();
+  }, 10000);
 });
 
 onUnmounted(() => {
@@ -138,6 +153,24 @@ async function fetchMySkin() {
     activeSkin.value = result.activeSkin;
   } catch (error) {
     console.error('获取用户皮肤失败:', error);
+  }
+}
+
+async function fetchEquippedTitle() {
+  try {
+    const result = await getEquippedTitle();
+    userEquippedTitle.value = result;
+  } catch (error) {
+    console.error('获取用户称号失败:', error);
+  }
+}
+
+async function fetchUnreadNotificationCount() {
+  try {
+    const result = await getUnreadNotificationCount();
+    unreadNotificationCount.value = result?.count || 0;
+  } catch (error) {
+    console.error('获取未读通知数失败:', error);
   }
 }
 
@@ -167,6 +200,10 @@ function goToMessages() {
 
 function goToRank() {
   router.push('/rank');
+}
+
+function goToNotifications() {
+  router.push('/notifications');
 }
 </script>
 
@@ -207,6 +244,11 @@ function goToRank() {
 .nickname {
   font-size: 16px;
   font-weight: bold;
+  margin-bottom: 2px;
+}
+
+.user-title {
+  margin-bottom: 2px;
 }
 
 .user-id {

@@ -314,6 +314,9 @@
               <span class="gender-icon" v-if="profileUser.gender === '男'">♂</span>
               <span class="gender-icon gender-female" v-else-if="profileUser.gender === '女'">♀</span>
             </div>
+            <div class="profile-title-row" v-if="profileUser.equippedTitle">
+              <TitleBadge :title="profileUser.equippedTitle" size="small" />
+            </div>
             <div class="profile-username" v-if="profileUser.username">@{{ profileUser.username }}</div>
             <div class="profile-user-id">ID: {{ profileUser.id }}</div>
           </div>
@@ -410,6 +413,7 @@ import { showToast, showDialog } from 'vant';
 import { getUser } from '../utils/storage';
 import { getMessages, sendMessage as apiSendMessage, getBottleDetail, getBackpackItems, sendChatGift, getIntimacy, getUserIntimacy, getUserProfile, sendFriendRequest, recallMessage, updateTypingStatus, getTypingStatus, uploadMessageImage, blockUser, unblockUser, checkBlockStatus, getMyChatSkins, getMyAvatarFrames } from '../api';
 import AvatarDisplay from '../components/AvatarDisplay.vue';
+import TitleBadge from '../components/TitleBadge.vue';
 
 const route = useRoute();
 const router = useRouter();
@@ -1754,6 +1758,10 @@ function previewImage(src) {
   display: flex;
   align-items: center;
   gap: 6px;
+  margin-bottom: 4px;
+}
+
+.profile-title-row {
   margin-bottom: 4px;
 }
 

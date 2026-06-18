@@ -6,6 +6,7 @@ const multer = require('multer');
 const path = require('path');
 const pool = require('../config/db');
 const { generateUUID, generateNickname, generateAvatar, generateResponse } = require('../utils/helper');
+const { getEquippedTitle } = require('../utils/titleManager');
 
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
@@ -184,7 +185,7 @@ router.get('/info', authenticateToken, async (req, res) => {
     const userId = req.user.userId;
 
     const [users] = await pool.execute(
-      'SELECT id, username, nickname, avatar, gender, birthday, bio, created_at, last_active_at FROM users WHERE id = ?',
+      'SELECT id, username, nickname, avatar, gender, birthday, bio, created_at, last_active_at, coins, charm, equipped_title FROM users WHERE id = ?',
       [userId]
     );
 
@@ -192,7 +193,11 @@ router.get('/info', authenticateToken, async (req, res) => {
       return res.status(404).json(generateResponse(false, null, '用户不存在'));
     }
 
-    res.json(generateResponse(true, users[0], '获取用户信息成功'));
+    const userInfo = users[0];
+    const equippedTitle = await getEquippedTitle(userId);
+    userInfo.equippedTitle = equippedTitle;
+
+    res.json(generateResponse(true, userInfo, '获取用户信息成功'));
   } catch (error) {
     console.error('获取用户信息失败:', error);
     res.status(500).json(generateResponse(false, null, '获取用户信息失败'));
@@ -372,6 +377,9 @@ router.get('/profile/:userId', authenticateToken, async (req, res) => {
     const chatSkinInfo = await getUserActiveChatSkin(userId);
     user.avatarFrame = avatarFrame;
     user.chatSkin = chatSkinInfo;
+
+    const userEquippedTitle = await getEquippedTitle(userId);
+    user.equippedTitle = userEquippedTitle;
 
     res.json(generateResponse(true, user, '获取用户信息成功'));
   } catch (error) {

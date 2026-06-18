@@ -8,6 +8,7 @@ const { OPERATION_TYPES, logOperation } = require('../utils/bottleLogger');
 const { BOTTLE_EXPIRE_DAYS, MAX_PICK_COUNT } = require('../utils/bottleScheduler');
 const { getUserActiveSkin, getSkinById } = require('./shop');
 const { hasBlocked, isBlockedBy } = require('./user');
+const { checkAchievementTitles } = require('../utils/titleManager');
 
 const DAILY_LIMIT = 20;
 const RECALL_TIME_LIMIT_MINUTES = 5;
@@ -187,6 +188,13 @@ router.post('/throw', async (req, res) => {
 
     await conn.commit();
 
+    let newTitles = [];
+    try {
+      newTitles = await checkAchievementTitles(senderId);
+    } catch (err) {
+      console.error('检查成就称号失败:', err);
+    }
+
     res.json(generateResponse(true, {
       id: bottleId,
       content: content.trim(),
@@ -198,7 +206,8 @@ router.post('/throw', async (req, res) => {
       targetMinAge: validatedMinAge,
       targetMaxAge: validatedMaxAge,
       expiresInDays: BOTTLE_EXPIRE_DAYS,
-      throwRemaining: Math.max(0, DAILY_LIMIT - throwCount - 1)
+      throwRemaining: Math.max(0, DAILY_LIMIT - throwCount - 1),
+      newTitles
     }, '瓶子扔出成功'));
   } catch (error) {
     console.error('扔瓶子失败:', error);
@@ -505,6 +514,13 @@ router.post('/pick', async (req, res) => {
 
     await conn.commit();
 
+    let newTitles = [];
+    try {
+      newTitles = await checkAchievementTitles(pickerId);
+    } catch (err) {
+      console.error('检查成就称号失败:', err);
+    }
+
     const newPickCount = (bottle.pick_count || 0) + 1;
     const isMaxPick = newPickCount >= MAX_PICK_COUNT;
 
@@ -541,7 +557,8 @@ router.post('/pick', async (req, res) => {
       pinnedAt: bottle.pinned_at,
       isMaxPick,
       maxPickCount: MAX_PICK_COUNT,
-      pickRemaining: Math.max(0, DAILY_LIMIT - pickCount - 1)
+      pickRemaining: Math.max(0, DAILY_LIMIT - pickCount - 1),
+      newTitles
     }, isPinned ? '捞到置顶瓶子了！' : '捞到瓶子了'));
   } catch (error) {
     await conn.rollback();

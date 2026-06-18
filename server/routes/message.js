@@ -5,6 +5,7 @@ const path = require('path');
 const pool = require('../config/db');
 const { generateUUID, generateResponse } = require('../utils/helper');
 const { isBlockedBy, hasBlocked, isFriend } = require('./user');
+const { checkAchievementTitles } = require('../utils/titleManager');
 
 const messageImageStorage = multer.diskStorage({
   destination: function (req, file, cb) {
@@ -332,7 +333,17 @@ router.post('/send', async (req, res) => {
       [messageId]
     );
 
-    res.json(generateResponse(true, message[0], blocked ? '对方已拒收您的消息' : '消息发送成功'));
+    let newTitles = [];
+    if (!blocked) {
+      try {
+        newTitles = await checkAchievementTitles(senderId);
+      } catch (err) {
+        console.error('检查成就称号失败:', err);
+      }
+    }
+
+    const result = { ...message[0], newTitles };
+    res.json(generateResponse(true, result, blocked ? '对方已拒收您的消息' : '消息发送成功'));
   } catch (error) {
     console.error('发送消息失败:', error);
     res.status(500).json(generateResponse(false, null, '发送消息失败'));

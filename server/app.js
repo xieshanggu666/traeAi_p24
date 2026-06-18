@@ -9,6 +9,7 @@ const bottleRoutes = require('./routes/bottle');
 const messageRoutes = require('./routes/message');
 const welfareRoutes = require('./routes/welfare');
 const shopRoutes = require('./routes/shop');
+const titleRoutes = require('./routes/title');
 const { startScheduledTasks } = require('./utils/bottleScheduler');
 const pool = require('./config/db');
 const { generateUUID } = require('./utils/helper');
@@ -17,6 +18,7 @@ const { migrateMessageAdvanced } = require('./config/migrateMessageAdvanced');
 const { migrateBlacklistAndMessageFeatures } = require('./config/migrateBlacklist');
 const { migrateWelfareFields } = require('./config/migrateWelfareFields');
 const { migrateGiftsFields } = require('./config/migrateGiftsFields');
+const { migrateTitles } = require('./config/migrateTitles');
 
 async function ensureUserIntimacyTable() {
   try {
@@ -113,6 +115,7 @@ app.use('/api/bottle', authenticateToken, bottleRoutes);
 app.use('/api/message', authenticateToken, messageRoutes);
 app.use('/api/welfare', authenticateToken, welfareRoutes);
 app.use('/api/shop', authenticateToken, shopRoutes);
+app.use('/api/title', authenticateToken, titleRoutes);
 
 app.get('/api/health', (req, res) => {
   res.json({
@@ -173,6 +176,12 @@ app.listen(PORT, async () => {
     await migrateBlacklistAndMessageFeatures();
   } catch (error) {
     console.error('黑名单和消息图片功能迁移失败，但服务继续运行:', error.message);
+  }
+  
+  try {
+    await migrateTitles();
+  } catch (error) {
+    console.error('称号系统迁移失败，但服务继续运行:', error.message);
   }
   
   startScheduledTasks();

@@ -300,3 +300,47 @@ export const getWealthRank = () => {
 export const getCharmRank = () => {
   return request.get('/user/rank/charm');
 };
+
+export const getTitles = () => {
+  return request.get('/title/list');
+};
+
+export const getMyTitles = () => {
+  return request.get('/title/mine');
+};
+
+export const getEquippedTitle = () => {
+  return request.get('/title/equipped');
+};
+
+export const equipTitle = (titleId) => {
+  return request.post(`/title/equip/${titleId}`);
+};
+
+export const unequipTitle = (titleId) => {
+  return request.post(`/title/unequip/${titleId}`);
+};
+
+export const getNotifications = (page = 1, pageSize = 20) => {
+  return request.get('/title/notifications', { params: { page, pageSize } });
+};
+
+export const getUnreadNotificationCount = () => {
+  return request.get('/title/notifications/unread-count');
+};
+
+export const markNotificationRead = (id) => {
+  return request.post(`/title/notifications/${id}/read`);
+};
+
+export const markAllNotificationsRead = () => {
+  return request.post('/title/notifications/read-all');
+};
+
+export const checkAchievementTitles = () => {
+  return request.post('/title/check-achievements');
+};
+
+export const getUserTitle = (userId) => {
+  return request.get(`/title/user/${userId}/title`);
+};

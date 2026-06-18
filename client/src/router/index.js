@@ -103,6 +103,18 @@ const routes = [
     name: 'Rank',
     component: () => import('../views/Rank.vue'),
     meta: { title: '排行榜', requiresAuth: true }
+  },
+  {
+    path: '/titles',
+    name: 'Titles',
+    component: () => import('../views/Titles.vue'),
+    meta: { title: '我的称号', requiresAuth: true }
+  },
+  {
+    path: '/notifications',
+    name: 'Notifications',
+    component: () => import('../views/Notifications.vue'),
+    meta: { title: '消息通知', requiresAuth: true }
   }
 ];
 
