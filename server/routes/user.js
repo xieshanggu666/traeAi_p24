@@ -367,6 +367,12 @@ router.get('/profile/:userId', authenticateToken, async (req, res) => {
     user.iBlocked = iBlocked;
     user.blockedMe = blockedMe;
 
+    const { getUserActiveAvatarFrame, getUserActiveChatSkin } = require('./shop');
+    const avatarFrame = await getUserActiveAvatarFrame(userId);
+    const chatSkinInfo = await getUserActiveChatSkin(userId);
+    user.avatarFrame = avatarFrame;
+    user.chatSkin = chatSkinInfo;
+
     res.json(generateResponse(true, user, '获取用户信息成功'));
   } catch (error) {
     console.error('获取用户信息失败:', error);

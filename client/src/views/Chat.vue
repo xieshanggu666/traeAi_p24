@@ -55,6 +55,7 @@
         <AvatarDisplay 
           :avatar="otherUser?.avatar || msg.sender_avatar" 
           :size="36" 
+          :avatarFrame="otherAvatarFrame"
           class="message-avatar clickable-avatar" 
           v-if="msg.sender_id !== currentUserId && !msg.is_recalled" 
           @click="showUserProfile(otherUserId)" 
@@ -63,7 +64,7 @@
           <div v-if="msg.is_recalled" class="recalled-message recalled-other recalled-center">
             <span class="recalled-text">对方撤回了一条消息</span>
           </div>
-          <div v-else class="message-bubble" :class="{ 'gift-bubble': isGiftMessage(msg), 'image-bubble': isImageMessage(msg) }" :style="otherBubbleStyle">
+          <div v-else class="message-bubble" :class="{ 'gift-bubble': isGiftMessage(msg), 'image-bubble': isImageMessage(msg) }">
             <template v-if="isGiftMessage(msg)">
               <div class="gift-message">
                 <div class="gift-label">🎁 赠送了礼物</div>
@@ -80,7 +81,7 @@
               <img :src="msg.image_url || msg.content" class="message-image" @click="previewImage(msg.image_url || msg.content)" />
             </template>
             <template v-else>
-              <div class="message-content">{{ msg.content }}</div>
+              <div class="message-content" :style="getOtherMsgSkinStyle()">{{ msg.content }}</div>
             </template>
             <div class="message-time">{{ formatTime(msg.created_at) }}</div>
           </div>
@@ -97,7 +98,6 @@
             <div 
               class="message-bubble" 
               :class="{ 'gift-bubble-mine': isGiftMessage(msg), 'bubble-contextmenu': contextMenuMsgId === msg.id, 'image-bubble-mine': isImageMessage(msg), 'msg-blocked': msg.is_blocked }"
-              :style="selfBubbleStyle"
               @contextmenu.prevent="showContextMenu($event, msg)"
               @longpress="handleLongPress(msg)"
             >
@@ -117,7 +117,7 @@
                 <img :src="msg.image_url || msg.content" class="message-image" @click="previewImage(msg.image_url || msg.content)" />
               </template>
               <template v-else>
-                <div class="message-content">{{ msg.content }}</div>
+                <div class="message-content" :style="getSelfMsgSkinStyle()">{{ msg.content }}</div>
               </template>
               <div class="message-footer">
                 <div class="message-time">{{ formatTime(msg.created_at) }}</div>
@@ -307,7 +307,7 @@
           <van-icon name="cross" size="20" @click="showProfilePopup = false" />
         </div>
         <div class="profile-header">
-          <AvatarDisplay :avatar="profileUser.avatar" :size="72" class="profile-avatar" />
+          <AvatarDisplay :avatar="profileUser.avatar" :size="72" :avatarFrame="profileUser.avatarFrame" class="profile-avatar" />
           <div class="profile-info">
             <div class="profile-nickname-row">
               <span class="profile-nickname">{{ profileUser.nickname }}</span>
@@ -458,6 +458,8 @@ let lastTypingSent = false;
 
 const chatSkin = ref(null);
 const myAvatarFrame = ref(null);
+const otherAvatarFrame = ref(null);
+const otherChatSkin = ref(null);
 
 const CONSECUTIVE_LIMIT = 5;
 const RECALL_WINDOW_MINUTES = 3;
@@ -471,7 +473,7 @@ const chatBgStyle = computed(() => {
   return style;
 });
 
-const selfBubbleStyle = computed(() => {
+function getSelfMsgSkinStyle() {
   if (!chatSkin.value) return {};
   const style = {};
   if (chatSkin.value.bubble_bg_mine) {
@@ -481,19 +483,19 @@ const selfBubbleStyle = computed(() => {
     style.color = chatSkin.value.text_color_mine;
   }
   return style;
-});
+}
 
-const otherBubbleStyle = computed(() => {
-  if (!chatSkin.value) return {};
+function getOtherMsgSkinStyle() {
+  if (!otherChatSkin.value) return {};
   const style = {};
-  if (chatSkin.value.bubble_bg_other) {
-    style.background = chatSkin.value.bubble_bg_other;
+  if (otherChatSkin.value.bubble_bg_other) {
+    style.background = otherChatSkin.value.bubble_bg_other;
   }
-  if (chatSkin.value.text_color_other) {
-    style.color = chatSkin.value.text_color_other;
+  if (otherChatSkin.value.text_color_other) {
+    style.color = otherChatSkin.value.text_color_other;
   }
   return style;
-});
+}
 
 const consecutiveCount = computed(() => {
   if (!currentUserId.value || messages.value.length === 0) return 0;
@@ -638,7 +640,7 @@ async function initChat() {
     };
     otherUserId.value = detail.other_id;
     
-    await Promise.all([fetchMessages(), fetchIntimacy(), fetchFriendStatus(), fetchBlockStatus(), fetchChatSkin(), fetchMyAvatarFrame()]);
+    await Promise.all([fetchMessages(), fetchIntimacy(), fetchFriendStatus(), fetchBlockStatus(), fetchChatSkin(), fetchMyAvatarFrame(), fetchOtherUserSkin()]);
   } catch (error) {
     showToast(error.businessMessage || error.httpMessage || '出现异常');
   } finally {
@@ -661,6 +663,17 @@ async function fetchMyAvatarFrame() {
     myAvatarFrame.value = result.activeFrame || null;
   } catch (error) {
     console.error('获取头像框失败:', error);
+  }
+}
+
+async function fetchOtherUserSkin() {
+  if (!otherUserId.value) return;
+  try {
+    const profile = await getUserProfile(otherUserId.value);
+    otherAvatarFrame.value = profile.avatarFrame || null;
+    otherChatSkin.value = profile.chatSkin || null;
+  } catch (error) {
+    console.error('获取对方用户皮肤失败:', error);
   }
 }
 
