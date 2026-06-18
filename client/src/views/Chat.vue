@@ -45,7 +45,7 @@
       </template>
     </div>
 
-    <div class="message-list" ref="messageListRef" :style="chatBgStyle">
+    <div class="message-list" ref="messageListRef">
       <div 
         class="message-item" 
         v-for="msg in messages" 
@@ -463,15 +463,6 @@ const otherChatSkin = ref(null);
 
 const CONSECUTIVE_LIMIT = 5;
 const RECALL_WINDOW_MINUTES = 3;
-
-const chatBgStyle = computed(() => {
-  if (!chatSkin.value) return {};
-  const style = {};
-  if (chatSkin.value.bg_color) {
-    style.background = chatSkin.value.bg_color;
-  }
-  return style;
-});
 
 function getSelfMsgSkinStyle() {
   if (!chatSkin.value) return {};

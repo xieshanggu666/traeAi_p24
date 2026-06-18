@@ -267,7 +267,7 @@
         <van-loading color="#667eea" size="24px">加载中...</van-loading>
       </div>
 
-      <div class="empty-state" v-if="filteredProducts.length === 0 && !loading && activeCategory !== 'skin'">
+      <div class="empty-state" v-if="filteredProducts.length === 0 && !loading && (activeCategory === 'function' || activeCategory === 'gift')">
         <div class="empty-icon">📦</div>
         <div class="empty-text">暂无商品</div>
       </div>
@@ -661,14 +661,27 @@ function goToBackpack() { router.push('/backpack'); }
   background: #fff;
   border-radius: 12px;
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+  overflow: hidden;
+}
+
+.category-tabs :deep(.van-tabs__wrap) {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.category-tabs :deep(.van-tabs__nav) {
+  display: flex;
 }
 
 .category-tabs :deep(.van-tab) {
   font-size: 14px;
   font-weight: 500;
-  min-width: auto;
   flex: 0 0 auto;
-  padding: 0 12px;
+  padding: 0 14px;
+}
+
+.category-tabs :deep(.van-tab--active) {
+  font-weight: 600;
 }
 
 .category-tab-title {
