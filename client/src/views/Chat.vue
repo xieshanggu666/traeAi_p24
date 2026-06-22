@@ -64,7 +64,7 @@
           <div v-if="msg.is_recalled" class="recalled-message recalled-other recalled-center">
             <span class="recalled-text">对方撤回了一条消息</span>
           </div>
-          <div v-else class="message-bubble" :class="{ 'gift-bubble': isGiftMessage(msg), 'image-bubble': isImageMessage(msg), 'special-effect-bubble': isGiftMessage(msg) && parseGiftContent(msg.content).isSpecialEffect }">
+          <div v-else class="message-bubble" :class="{ 'gift-bubble-mine': isGiftMessage(msg), 'image-bubble': isImageMessage(msg), 'special-effect-bubble': isGiftMessage(msg) && parseGiftContent(msg.content).isSpecialEffect }">
             <template v-if="isGiftMessage(msg)">
               <div class="gift-message" :class="{ 'special-gift-message': parseGiftContent(msg.content).isSpecialEffect }">
                 <div class="gift-label">🎁 赠送了礼物 <van-tag v-if="parseGiftContent(msg.content).isSpecialEffect" type="danger" size="mini" round>特效</van-tag></div>
@@ -83,7 +83,9 @@
             <template v-else>
               <div class="message-content" :style="getOtherMsgSkinStyle()">{{ msg.content }}</div>
             </template>
-            <div class="message-time">{{ formatTime(msg.created_at) }}</div>
+            <div class="message-footer">
+              <div class="message-time">{{ formatTime(msg.created_at) }}</div>
+            </div>
           </div>
         </template>
         <template v-else>
@@ -476,6 +478,8 @@ const blockingUser = ref(false);
 const showSpecialEffect = ref(false);
 const specialEffectData = ref({ giftIcon: '', giftName: '', effectType: '' });
 const effectParticles = ref([]);
+const triggeredEffectIds = ref(new Set());
+const isFirstLoad = ref(true);
 let specialEffectTimer = null;
 let typingTimer = null;
 let typingSendTimer = null;
@@ -643,12 +647,15 @@ watch(messages, (newMsgs, oldMsgs) => {
   nextTick(() => {
     scrollToBottom();
   });
+  if (isFirstLoad.value) return;
   if (oldMsgs && newMsgs.length > oldMsgs.length) {
     const newMessages = newMsgs.slice(oldMsgs.length);
     for (const msg of newMessages) {
       if (msg.sender_id !== currentUserId.value && isGiftMessage(msg)) {
+        if (triggeredEffectIds.value.has(msg.id)) continue;
         const parsed = parseGiftContent(msg.content);
         if (parsed.isSpecialEffect && parsed.effectType) {
+          triggeredEffectIds.value.add(msg.id);
           triggerSpecialEffect(parsed.giftIcon, parsed.giftName, parsed.effectType);
           break;
         }
@@ -731,6 +738,9 @@ async function fetchMessages() {
   try {
     const result = await getMessages(bottleId);
     messages.value = result;
+    if (isFirstLoad.value) {
+      isFirstLoad.value = false;
+    }
   } catch (error) {
     console.error('获取消息失败:', error);
   }
