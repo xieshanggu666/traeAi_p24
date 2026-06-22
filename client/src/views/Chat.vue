@@ -478,8 +478,7 @@ const blockingUser = ref(false);
 const showSpecialEffect = ref(false);
 const specialEffectData = ref({ giftIcon: '', giftName: '', effectType: '' });
 const effectParticles = ref([]);
-const triggeredEffectIds = ref(new Set());
-const isFirstLoad = ref(true);
+const knownMessageIds = ref(new Set());
 let specialEffectTimer = null;
 let typingTimer = null;
 let typingSendTimer = null;
@@ -643,25 +642,10 @@ onUnmounted(() => {
   sendTypingStatus(false);
 });
 
-watch(messages, (newMsgs, oldMsgs) => {
+watch(messages, () => {
   nextTick(() => {
     scrollToBottom();
   });
-  if (isFirstLoad.value) return;
-  if (oldMsgs && newMsgs.length > oldMsgs.length) {
-    const newMessages = newMsgs.slice(oldMsgs.length);
-    for (const msg of newMessages) {
-      if (msg.sender_id !== currentUserId.value && isGiftMessage(msg)) {
-        if (triggeredEffectIds.value.has(msg.id)) continue;
-        const parsed = parseGiftContent(msg.content);
-        if (parsed.isSpecialEffect && parsed.effectType) {
-          triggeredEffectIds.value.add(msg.id);
-          triggerSpecialEffect(parsed.giftIcon, parsed.giftName, parsed.effectType);
-          break;
-        }
-      }
-    }
-  }
 }, { deep: true });
 
 async function initChat() {
@@ -737,9 +721,26 @@ async function fetchFriendStatus() {
 async function fetchMessages() {
   try {
     const result = await getMessages(bottleId);
+    const isFirstLoad = knownMessageIds.value.size === 0;
+    const newIncoming = [];
+
+    for (const msg of result) {
+      if (!knownMessageIds.value.has(msg.id)) {
+        if (!isFirstLoad && msg.sender_id !== currentUserId.value && isGiftMessage(msg)) {
+          newIncoming.push(msg);
+        }
+        knownMessageIds.value.add(msg.id);
+      }
+    }
+
     messages.value = result;
-    if (isFirstLoad.value) {
-      isFirstLoad.value = false;
+
+    for (const msg of newIncoming) {
+      const parsed = parseGiftContent(msg.content);
+      if (parsed.isSpecialEffect && parsed.effectType) {
+        triggerSpecialEffect(parsed.giftIcon, parsed.giftName, parsed.effectType);
+        break;
+      }
     }
   } catch (error) {
     console.error('获取消息失败:', error);
@@ -1551,7 +1552,7 @@ function previewImage(src) {
 }
 
 .gift-message {
-  background: linear-gradient(135deg, #fff0f5 0%, #ffe0ec 100%);
+  background: linear-gradient(135deg, #667eea20 0%, #764ba220 100%);
   border-radius: 16px;
   padding: 14px 16px;
   min-width: 200px;
@@ -1563,7 +1564,7 @@ function previewImage(src) {
 
 .gift-label {
   font-size: 12px;
-  color: #ff6b9d;
+  color: #667eea;
   font-weight: 500;
   margin-bottom: 10px;
 }
@@ -1597,7 +1598,7 @@ function previewImage(src) {
 
 .gift-charm {
   font-size: 12px;
-  color: #ff6b9d;
+  color: #667eea;
   font-weight: 500;
 }
 
@@ -2387,8 +2388,8 @@ function previewImage(src) {
 }
 
 .special-gift-message {
-  background: linear-gradient(135deg, #fff9f0 0%, #ffe0ec 50%, #f0e0ff 100%) !important;
-  border: 1px solid #ff6b9d50;
+  background: linear-gradient(135deg, #667eea20 0%, #764ba220 50%, #ff6b9d15 100%) !important;
+  border: 1px solid #667eea40;
 }
 
 .is-mine .special-gift-message {
@@ -2397,7 +2398,7 @@ function previewImage(src) {
 }
 
 .special-effect-bubble {
-  box-shadow: 0 0 12px rgba(255, 107, 157, 0.3);
+  box-shadow: 0 0 12px rgba(102, 126, 234, 0.3);
 }
 
 .special-gift-icon-anim {
