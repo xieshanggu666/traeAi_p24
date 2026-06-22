@@ -344,3 +344,7 @@ export const checkAchievementTitles = () => {
 export const getUserTitle = (userId) => {
   return request.get(`/title/user/${userId}/title`);
 };
+
+export const getTitleProgress = (titleId) => {
+  return request.get(`/title/progress/${titleId}`);
+};

@@ -517,6 +517,119 @@ async function grantRankTitles() {
   return results;
 }
 
+async function getTitleProgress(userId, titleId) {
+  const title = await getTitleById(titleId);
+  if (!title) {
+    return null;
+  }
+
+  if (!title.condition_json) {
+    return null;
+  }
+
+  const condition = typeof title.condition_json === 'string'
+    ? JSON.parse(title.condition_json)
+    : title.condition_json;
+
+  let current = 0;
+  let target = condition.value || 0;
+
+  switch (condition.type) {
+    case 'continuous_checkin': {
+      const [rows] = await pool.execute(
+        'SELECT checkin_date FROM checkins WHERE user_id = ? ORDER BY checkin_date DESC',
+        [userId]
+      );
+      const checkinDatesSet = new Set();
+      for (const row of rows) {
+        let dateStr;
+        if (typeof row.checkin_date === 'string') {
+          dateStr = row.checkin_date.split('T')[0];
+        } else if (row.checkin_date instanceof Date) {
+          const d = row.checkin_date;
+          dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        } else {
+          dateStr = String(row.checkin_date).split('T')[0];
+        }
+        checkinDatesSet.add(dateStr);
+      }
+      const sortedDates = Array.from(checkinDatesSet).sort().reverse();
+      let maxContinuous = 0;
+      let currentContinuous = 0;
+      let prevDate = null;
+      for (const dateStr of sortedDates) {
+        const currentDate = new Date(dateStr);
+        if (prevDate) {
+          const diffDays = Math.round((prevDate - currentDate) / (1000 * 60 * 60 * 24));
+          if (diffDays === 1) {
+            currentContinuous++;
+          } else {
+            currentContinuous = 1;
+          }
+        } else {
+          currentContinuous = 1;
+        }
+        if (currentContinuous > maxContinuous) {
+          maxContinuous = currentContinuous;
+        }
+        prevDate = currentDate;
+      }
+      current = maxContinuous;
+      target = condition.value;
+      break;
+    }
+    case 'total_messages': {
+      const [rows] = await pool.execute(
+        'SELECT COUNT(*) as cnt FROM messages WHERE sender_id = ?',
+        [userId]
+      );
+      current = rows[0].cnt;
+      target = condition.value;
+      break;
+    }
+    case 'total_bottles_thrown': {
+      const [rows] = await pool.execute(
+        'SELECT COUNT(*) as cnt FROM bottles WHERE sender_id = ?',
+        [userId]
+      );
+      current = rows[0].cnt;
+      target = condition.value;
+      break;
+    }
+    case 'total_bottles_picked': {
+      const [rows] = await pool.execute(
+        'SELECT COUNT(*) as cnt FROM bottles WHERE picker_id = ?',
+        [userId]
+      );
+      current = rows[0].cnt;
+      target = condition.value;
+      break;
+    }
+    case 'all_once_tasks': {
+      const [claimed] = await pool.execute(
+        "SELECT COUNT(*) as cnt FROM task_claims WHERE user_id = ? AND task_type = 'once'",
+        [userId]
+      );
+      current = claimed[0].cnt;
+      target = 3;
+      break;
+    }
+    default:
+      return null;
+  }
+
+  const percentage = target > 0 ? Math.min(Math.round((current / target) * 100), 100) : 0;
+
+  return {
+    titleId,
+    titleName: title.name,
+    conditionType: condition.type,
+    current,
+    target,
+    percentage
+  };
+}
+
 module.exports = {
   getTitleById,
   getAllTitles,
@@ -539,5 +652,6 @@ module.exports = {
   checkTotalBottlesPicked,
   checkAllOnceTasks,
   grantRankTitles,
-  calculateExpiresAt
+  calculateExpiresAt,
+  getTitleProgress
 };

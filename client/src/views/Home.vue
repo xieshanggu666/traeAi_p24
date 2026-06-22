@@ -33,7 +33,7 @@
 
       <div class="bottle-animation" :style="bottleAnimBg">
         <div class="bottle floating" :style="bottleFloatStyle">
-          <span class="bottle-icon">{{ activeSkinEmoji }}</span>
+          <span class="bottle-emoji">{{ activeSkinEmoji }}</span>
         </div>
         <div v-if="activeSkin" class="skin-label" :style="skinLabelStyle">
           {{ activeSkin.emoji }} {{ activeSkin.name }}
@@ -285,6 +285,10 @@ function goToNotifications() {
 .bottle {
   font-size: 120px;
   animation: float 3s ease-in-out infinite;
+}
+
+.bottle-emoji {
+  font-size: inherit;
 }
 
 .skin-label {

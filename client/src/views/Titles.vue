@@ -134,6 +134,29 @@
             </div>
           </div>
           
+          <div class="detail-section" v-if="!hasTitle(resolveTitleId(selectedTitle)) && titleProgress">
+            <div class="detail-label">当前进度</div>
+            <div class="progress-info">
+              <div class="progress-text">
+                <span class="progress-current">{{ titleProgress.current }}</span>
+                <span class="progress-separator">/</span>
+                <span class="progress-target">{{ titleProgress.target }}{{ getProgressLabel(titleProgress.conditionType) }}</span>
+              </div>
+              <div class="progress-bar-wrapper">
+                <div class="progress-bar" :style="{ width: titleProgress.percentage + '%' }"></div>
+              </div>
+              <div class="progress-percentage">{{ titleProgress.percentage }}%</div>
+            </div>
+          </div>
+          
+          <div class="detail-section" v-if="!hasTitle(resolveTitleId(selectedTitle)) && progressLoading">
+            <div class="detail-label">当前进度</div>
+            <div class="progress-loading">
+              <van-loading size="20" color="#667eea" />
+              <span>加载进度中...</span>
+            </div>
+          </div>
+          
           <div class="detail-section" v-if="selectedTitle.validity_type">
             <div class="detail-label">有效期</div>
             <div class="detail-validity">
@@ -212,7 +235,8 @@ import {
   getTitles, 
   getMyTitles, 
   equipTitle as apiEquipTitle, 
-  unequipTitle as apiUnequipTitle 
+  unequipTitle as apiUnequipTitle,
+  getTitleProgress
 } from '../api';
 
 const router = useRouter();
@@ -224,6 +248,8 @@ const myTitles = ref([]);
 const equippedTitle = ref(null);
 const showDetail = ref(false);
 const selectedTitle = ref(null);
+const titleProgress = ref(null);
+const progressLoading = ref(false);
 
 const unobtainedTitles = computed(() => {
   const obtainedIds = new Set(myTitles.value.map(t => t.title_id));
@@ -351,6 +377,7 @@ async function onRefresh() {
 
 function showTitleDetail(title) {
   selectedTitle.value = title;
+  titleProgress.value = null;
   showDetail.value = true;
 }
 
@@ -358,10 +385,36 @@ function showAllTitleDetail(title) {
   const userTitle = myTitles.value.find(t => t.title_id === title.id);
   if (userTitle) {
     selectedTitle.value = userTitle;
+    titleProgress.value = null;
   } else {
     selectedTitle.value = { ...title, title_id: title.id };
+    fetchTitleProgress(title.id);
   }
   showDetail.value = true;
+}
+
+async function fetchTitleProgress(titleId) {
+  progressLoading.value = true;
+  titleProgress.value = null;
+  try {
+    const result = await getTitleProgress(titleId);
+    titleProgress.value = result;
+  } catch {
+    titleProgress.value = null;
+  } finally {
+    progressLoading.value = false;
+  }
+}
+
+function getProgressLabel(type) {
+  const map = {
+    continuous_checkin: '天',
+    total_messages: '条',
+    total_bottles_thrown: '个',
+    total_bottles_picked: '个',
+    all_once_tasks: '个'
+  };
+  return map[type] || '';
 }
 
 async function handleEquip(titleId) {
@@ -903,5 +956,63 @@ onMounted(() => {
 .detail-actions {
   padding: 16px 20px 24px;
   border-top: 1px solid #f0f0f0;
+}
+
+.progress-info {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.progress-text {
+  display: flex;
+  align-items: baseline;
+  gap: 2px;
+  font-size: 14px;
+}
+
+.progress-current {
+  font-size: 20px;
+  font-weight: bold;
+  color: #667eea;
+}
+
+.progress-separator {
+  color: #ccc;
+  margin: 0 2px;
+}
+
+.progress-target {
+  color: #999;
+  font-size: 14px;
+}
+
+.progress-bar-wrapper {
+  width: 100%;
+  height: 8px;
+  background: #f0f0f0;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.progress-bar {
+  height: 100%;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-radius: 4px;
+  transition: width 0.5s ease;
+}
+
+.progress-percentage {
+  font-size: 12px;
+  color: #667eea;
+  font-weight: 500;
+}
+
+.progress-loading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #999;
+  font-size: 13px;
 }
 </style>

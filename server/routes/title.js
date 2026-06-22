@@ -13,7 +13,8 @@ const {
   getUnreadNotificationCount,
   markNotificationRead,
   markAllNotificationsRead,
-  checkAchievementTitles
+  checkAchievementTitles,
+  getTitleProgress
 } = require('../utils/titleManager');
 
 router.get('/list', async (req, res) => {
@@ -163,6 +164,24 @@ router.get('/user/:userId/title', async (req, res) => {
   } catch (error) {
     console.error('获取用户称号失败:', error);
     res.status(500).json(generateResponse(false, null, '获取失败'));
+  }
+});
+
+router.get('/progress/:titleId', async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const { titleId } = req.params;
+    
+    const progress = await getTitleProgress(userId, titleId);
+    
+    if (!progress) {
+      return res.status(404).json(generateResponse(false, null, '该称号无进度数据'));
+    }
+    
+    res.json(generateResponse(true, progress, '获取称号进度成功'));
+  } catch (error) {
+    console.error('获取称号进度失败:', error);
+    res.status(500).json(generateResponse(false, null, '获取称号进度失败'));
   }
 });
 
