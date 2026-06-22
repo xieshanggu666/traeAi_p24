@@ -449,7 +449,7 @@ async function checkTotalMessages(userId, count) {
 async function checkTotalBottlesThrown(userId, count) {
   try {
     const [rows] = await pool.execute(
-      'SELECT COUNT(*) as cnt FROM bottles WHERE sender_id = ?',
+      'SELECT COUNT(*) as cnt FROM bottles WHERE sender_id = ? AND is_deleted = 0',
       [userId]
     );
     return rows[0].cnt >= count;
@@ -462,7 +462,7 @@ async function checkTotalBottlesThrown(userId, count) {
 async function checkTotalBottlesPicked(userId, count) {
   try {
     const [rows] = await pool.execute(
-      'SELECT COUNT(*) as cnt FROM bottles WHERE picker_id = ?',
+      'SELECT COUNT(*) as cnt FROM bottles WHERE picker_id = ? AND is_deleted = 0',
       [userId]
     );
     return rows[0].cnt >= count;
@@ -589,7 +589,7 @@ async function getTitleProgress(userId, titleId) {
     }
     case 'total_bottles_thrown': {
       const [rows] = await pool.execute(
-        'SELECT COUNT(*) as cnt FROM bottles WHERE sender_id = ?',
+        'SELECT COUNT(*) as cnt FROM bottles WHERE sender_id = ? AND is_deleted = 0',
         [userId]
       );
       current = rows[0].cnt;
@@ -598,7 +598,7 @@ async function getTitleProgress(userId, titleId) {
     }
     case 'total_bottles_picked': {
       const [rows] = await pool.execute(
-        'SELECT COUNT(*) as cnt FROM bottles WHERE picker_id = ?',
+        'SELECT COUNT(*) as cnt FROM bottles WHERE picker_id = ? AND is_deleted = 0',
         [userId]
       );
       current = rows[0].cnt;

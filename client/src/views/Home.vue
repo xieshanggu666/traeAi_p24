@@ -58,7 +58,7 @@
         </div>
       </div>
 
-      <div class="my-bottles" @click="goToMy">
+      <div class="my-bottles" @click="goToMessages">
         <span class="bottle-icon">🍾</span>
         <span>我的瓶子</span>
         <van-icon name="arrow" size="16" />
@@ -183,7 +183,7 @@ function goToPick() {
 }
 
 function goToMy() {
-  router.push('/messages');
+  router.push('/my');
 }
 
 function goToWelfare() {
