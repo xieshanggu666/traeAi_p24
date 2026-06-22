@@ -474,4 +474,66 @@ describe('排行榜称号实时授予测试', () => {
     expect(hasTycoon).toBe(false);
     expect(hasHeartthrob).toBe(false);
   });
+
+  test('用户已是第一时，再次检查会续期称号', async () => {
+    await pool.execute('DELETE FROM user_titles WHERE user_id = ?', [rankTestUserId1]);
+    await pool.execute('UPDATE users SET coins = 500000 WHERE id = ?', [rankTestUserId1]);
+    
+    const result1 = await checkAndGrantRankTitle(rankTestUserId1, 'wealth');
+    expect(result1).not.toBeNull();
+    expect(result1.isFirstTime).toBe(true);
+    
+    const result2 = await checkAndGrantRankTitle(rankTestUserId1, 'wealth');
+    expect(result2).not.toBeNull();
+    expect(result2.isFirstTime).toBe(false);
+    expect(result2.wasExpired).toBe(false);
+    
+    const hasTycoon = await hasTitle(rankTestUserId1, 'tycoon');
+    expect(hasTycoon).toBe(true);
+  });
+
+  test('grantRankTitles - 批量授予排行榜称号', async () => {
+    await pool.execute('DELETE FROM user_titles WHERE user_id = ?', [rankTestUserId1]);
+    await pool.execute('DELETE FROM user_titles WHERE user_id = ?', [rankTestUserId2]);
+    await pool.execute('UPDATE users SET coins = 888888, charm = 777777 WHERE id = ?', [rankTestUserId1]);
+    await pool.execute('UPDATE users SET coins = 100, charm = 100 WHERE id = ?', [rankTestUserId2]);
+    
+    const { grantRankTitles } = require('../utils/titleManager');
+    const results = await grantRankTitles();
+    
+    expect(Array.isArray(results.wealth)).toBe(true);
+    expect(Array.isArray(results.charm)).toBe(true);
+    expect(results.wealth.length).toBeGreaterThan(0);
+    expect(results.charm.length).toBeGreaterThan(0);
+    
+    const hasTycoon = await hasTitle(rankTestUserId1, 'tycoon');
+    const hasHeartthrob = await hasTitle(rankTestUserId1, 'heartthrob');
+    expect(hasTycoon).toBe(true);
+    expect(hasHeartthrob).toBe(true);
+  });
+
+  test('排行榜接口会自动授予第一名称号', async () => {
+    const rankTestUserId3 = generateUUID();
+    await pool.execute(
+      `INSERT INTO users (id, username, password, nickname, coins, charm) 
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [rankTestUserId3, `rank_test3_${Date.now()}`, 'test', '排行榜测试用户3', 999999, 0]
+    );
+
+    try {
+      const res = await request(app)
+        .get('/api/user/rank/wealth')
+        .set('Authorization', `Bearer ${testUserToken}`);
+      
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      
+      const hasTycoon = await hasTitle(rankTestUserId3, 'tycoon');
+      expect(hasTycoon).toBe(true);
+    } finally {
+      await pool.execute('DELETE FROM user_titles WHERE user_id = ?', [rankTestUserId3]);
+      await pool.execute('DELETE FROM notifications WHERE user_id = ?', [rankTestUserId3]);
+      await pool.execute('DELETE FROM users WHERE id = ?', [rankTestUserId3]);
+    }
+  });
 });

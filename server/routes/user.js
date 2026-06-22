@@ -6,7 +6,7 @@ const multer = require('multer');
 const path = require('path');
 const pool = require('../config/db');
 const { generateUUID, generateNickname, generateAvatar, generateResponse } = require('../utils/helper');
-const { getEquippedTitle } = require('../utils/titleManager');
+const { getEquippedTitle, checkAndGrantRankTitle, grantRankTitles } = require('../utils/titleManager');
 
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
@@ -755,6 +755,18 @@ router.get('/rank/wealth', authenticateToken, async (req, res) => {
         coins: Number(row.coins),
         charm: Number(row.charm)
       }));
+
+      if (list.length > 0) {
+        try {
+          const topCoins = list[0].coins;
+          const topUsers = list.filter(u => u.coins >= topCoins);
+          for (const user of topUsers) {
+            await checkAndGrantRankTitle(user.id, 'wealth');
+          }
+        } catch (e) {
+          console.error('授予财富榜称号失败:', e);
+        }
+      }
     }
 
     let myRank = null;
@@ -830,6 +842,18 @@ router.get('/rank/charm', authenticateToken, async (req, res) => {
         coins: Number(row.coins),
         charm: Number(row.charm)
       }));
+
+      if (list.length > 0) {
+        try {
+          const topCharm = list[0].charm;
+          const topUsers = list.filter(u => u.charm >= topCharm);
+          for (const user of topUsers) {
+            await checkAndGrantRankTitle(user.id, 'charm');
+          }
+        } catch (e) {
+          console.error('授予魅力榜称号失败:', e);
+        }
+      }
     }
 
     let myRank = null;

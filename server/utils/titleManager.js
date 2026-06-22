@@ -486,32 +486,38 @@ async function checkAllOnceTasks(userId) {
 }
 
 async function grantRankTitles() {
-  const results = { wealth: null, charm: null };
+  const results = { wealth: [], charm: [] };
   
   const [wealthRows] = await pool.execute(`
     SELECT id, nickname, coins FROM users 
     WHERE coins > 0 
     ORDER BY coins DESC 
-    LIMIT 1
+    LIMIT 10
   `);
   
   if (wealthRows.length > 0) {
-    const user = wealthRows[0];
-    await grantTitle(user.id, 'tycoon', 'wealth_rank_1');
-    results.wealth = user;
+    const topCoins = Number(wealthRows[0].coins);
+    const topWealthUsers = wealthRows.filter(u => Number(u.coins) >= topCoins);
+    for (const user of topWealthUsers) {
+      await grantTitle(user.id, 'tycoon', 'wealth_rank_1');
+      results.wealth.push(user);
+    }
   }
   
   const [charmRows] = await pool.execute(`
     SELECT id, nickname, charm FROM users 
     WHERE charm > 0 
     ORDER BY charm DESC 
-    LIMIT 1
+    LIMIT 10
   `);
   
   if (charmRows.length > 0) {
-    const user = charmRows[0];
-    await grantTitle(user.id, 'heartthrob', 'charm_rank_1');
-    results.charm = user;
+    const topCharm = Number(charmRows[0].charm);
+    const topCharmUsers = charmRows.filter(u => Number(u.charm) >= topCharm);
+    for (const user of topCharmUsers) {
+      await grantTitle(user.id, 'heartthrob', 'charm_rank_1');
+      results.charm.push(user);
+    }
   }
   
   return results;
@@ -538,17 +544,17 @@ async function checkAndGrantRankTitle(userId, rankType) {
   const userValue = Number(userRows[0][field]);
 
   const [topRows] = await pool.execute(
-    `SELECT id, ${field} FROM users WHERE ${field} > 0 ORDER BY ${field} DESC LIMIT 1`
+    `SELECT id, ${field} FROM users WHERE ${field} > 0 ORDER BY ${field} DESC LIMIT 10`
   );
 
   if (topRows.length === 0) {
     return null;
   }
 
-  const topUser = topRows[0];
-  const topValue = Number(topUser[field]);
+  const topValue = Number(topRows[0][field]);
+  const isTopRanked = topRows.some(u => u.id === userId && Number(u[field]) >= topValue);
 
-  if (topUser.id === userId && userValue >= topValue) {
+  if (isTopRanked) {
     const result = await grantTitle(userId, titleId, source);
     return result;
   }
