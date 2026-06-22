@@ -34,15 +34,19 @@
         </van-tab>
       </van-tabs>
 
-      <div class="product-list" v-if="!loading && (activeCategory === 'function' || activeCategory === 'gift')">
+      <div class="product-list" v-if="!loading && (activeCategory === 'function' || activeCategory === 'gift' || activeCategory === 'special_gift')">
         <div
           v-for="product in filteredProducts"
           :key="product.key"
           class="product-card"
+          :class="{ 'special-gift-card': product.category === 'special_gift' }"
         >
-          <div class="product-icon">{{ product.icon }}</div>
+          <div class="product-icon" :class="{ 'special-gift-icon': product.category === 'special_gift' }">{{ product.icon }}</div>
           <div class="product-info">
-            <div class="product-name">{{ product.name }}</div>
+            <div class="product-name">
+              {{ product.name }}
+              <van-tag v-if="product.isSpecialEffect" type="danger" size="mini" round style="margin-left: 4px;">特效</van-tag>
+            </div>
             <div class="product-desc">{{ product.description }}</div>
             <div class="product-meta">
               <span class="product-price">🪙 {{ product.price }}</span>
@@ -57,7 +61,7 @@
           <van-button
             size="small"
             round
-            type="primary"
+            :type="product.isSpecialEffect ? 'danger' : 'primary'"
             :disabled="!product.canBuy || userCoins < product.price"
             @click="handleBuy(product)"
           >
@@ -267,7 +271,7 @@
         <van-loading color="#667eea" size="24px">加载中...</van-loading>
       </div>
 
-      <div class="empty-state" v-if="filteredProducts.length === 0 && !loading && (activeCategory === 'function' || activeCategory === 'gift')">
+      <div class="empty-state" v-if="filteredProducts.length === 0 && !loading && (activeCategory === 'function' || activeCategory === 'gift' || activeCategory === 'special_gift')">
         <div class="empty-icon">📦</div>
         <div class="empty-text">暂无商品</div>
       </div>
@@ -331,6 +335,7 @@ async function fetchProducts() {
     categories.value = [
       { key: 'function', name: '功能道具', icon: '🎯' },
       { key: 'gift', name: '礼物', icon: '🎁' },
+      { key: 'special_gift', name: '特效礼物', icon: '✨' },
       { key: 'skin', name: '漂流瓶皮肤', icon: '✨' },
       { key: 'avatar_frame', name: '头像框', icon: '🖼️' },
       { key: 'chat_skin', name: '聊天皮肤', icon: '💬' }
@@ -1240,5 +1245,25 @@ function goToBackpack() { router.push('/backpack'); }
 
 .chat-skin-actions .van-button {
   flex: 1;
+}
+
+.special-gift-card {
+  background: linear-gradient(135deg, #fff9f0 0%, #fff0f5 50%, #f0f0ff 100%) !important;
+  border: 2px solid #ff6b9d40;
+}
+
+.special-gift-icon {
+  animation: specialGiftPulse 2s ease-in-out infinite;
+}
+
+@keyframes specialGiftPulse {
+  0%, 100% {
+    transform: scale(1);
+    filter: drop-shadow(0 0 4px rgba(255, 107, 157, 0.3));
+  }
+  50% {
+    transform: scale(1.15);
+    filter: drop-shadow(0 0 12px rgba(255, 107, 157, 0.6));
+  }
 }
 </style>

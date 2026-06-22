@@ -19,6 +19,7 @@ const { migrateBlacklistAndMessageFeatures } = require('./config/migrateBlacklis
 const { migrateWelfareFields } = require('./config/migrateWelfareFields');
 const { migrateGiftsFields } = require('./config/migrateGiftsFields');
 const { migrateTitles } = require('./config/migrateTitles');
+const { migrateSpecialGifts } = require('./config/migrateSpecialGifts');
 
 async function ensureUserIntimacyTable() {
   try {
@@ -182,6 +183,12 @@ app.listen(PORT, async () => {
     await migrateTitles();
   } catch (error) {
     console.error('称号系统迁移失败，但服务继续运行:', error.message);
+  }
+  
+  try {
+    await migrateSpecialGifts();
+  } catch (error) {
+    console.error('特效礼物迁移失败，但服务继续运行:', error.message);
   }
   
   startScheduledTasks();

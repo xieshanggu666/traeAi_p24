@@ -26,6 +26,19 @@
         </div>
       </div>
 
+      <div class="special-gift-marquee" v-if="marqueeMessages.length > 0">
+        <div class="marquee-icon">✨</div>
+        <div class="marquee-content">
+          <div class="marquee-track" :style="marqueeTrackStyle">
+            <span
+              v-for="(msg, idx) in marqueeMessages"
+              :key="idx"
+              class="marquee-item"
+            >{{ msg.icon }} {{ msg.sender }}赠送{{ msg.receiver }} {{ msg.giftName }}！！</span>
+          </div>
+        </div>
+      </div>
+
       <div class="main-title">
         <h1>🌊 漂流瓶</h1>
         <p>将心事放入瓶中，与陌生人相遇</p>
@@ -79,7 +92,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { getUser } from '../utils/storage';
-import { getUnreadCount, getMySkins, getEquippedTitle, getUnreadNotificationCount } from '../api';
+import { getUnreadCount, getMySkins, getEquippedTitle, getUnreadNotificationCount, getSpecialGiftNotifications } from '../api';
 import AvatarDisplay from '../components/AvatarDisplay.vue';
 import TitleBadge from '../components/TitleBadge.vue';
 
@@ -90,7 +103,14 @@ const unreadNotificationCount = ref(0);
 const active = ref('home');
 const activeSkin = ref(null);
 const userEquippedTitle = ref(null);
+const marqueeMessages = ref([]);
+const marqueeTrackStyle = ref({});
 let timer = null;
+let marqueeTimer = null;
+let marqueeLoopCount = 0;
+const MARQUEE_MAX_LOOPS = 3;
+let currentMarqueeOffset = 0;
+let marqueeAnimFrame = null;
 
 const shortUserId = computed(() => {
   return user.value?.id ? user.value.id.slice(0, 8) : '';
@@ -128,14 +148,20 @@ onMounted(() => {
   fetchMySkin();
   fetchEquippedTitle();
   fetchUnreadNotificationCount();
+  fetchSpecialGiftNotifications();
   timer = setInterval(() => {
     fetchUnreadCount();
     fetchUnreadNotificationCount();
   }, 10000);
+  marqueeTimer = setInterval(() => {
+    fetchSpecialGiftNotifications();
+  }, 15000);
 });
 
 onUnmounted(() => {
   if (timer) clearInterval(timer);
+  if (marqueeTimer) clearInterval(marqueeTimer);
+  if (marqueeAnimFrame) cancelAnimationFrame(marqueeAnimFrame);
 });
 
 async function fetchUnreadCount() {
@@ -172,6 +198,61 @@ async function fetchUnreadNotificationCount() {
   } catch (error) {
     console.error('获取未读通知数失败:', error);
   }
+}
+
+async function fetchSpecialGiftNotifications() {
+  try {
+    const result = await getSpecialGiftNotifications();
+    const notifications = result.notifications || [];
+    if (notifications.length === 0) {
+      marqueeMessages.value = [];
+      return;
+    }
+
+    const messages = [];
+    notifications.forEach(n => {
+      messages.push({
+        icon: n.gift_icon,
+        sender: n.sender_nickname,
+        receiver: n.receiver_nickname,
+        giftName: n.gift_name
+      });
+    });
+
+    marqueeMessages.value = messages;
+    marqueeLoopCount = 0;
+    startMarqueeAnimation();
+  } catch (error) {
+    console.error('获取特效礼物通知失败:', error);
+  }
+}
+
+function startMarqueeAnimation() {
+  if (marqueeAnimFrame) cancelAnimationFrame(marqueeAnimFrame);
+  currentMarqueeOffset = 0;
+
+  const totalWidth = marqueeMessages.value.length * 300;
+  const speed = 1;
+
+  function animate() {
+    currentMarqueeOffset -= speed;
+    if (currentMarqueeOffset <= -totalWidth) {
+      currentMarqueeOffset = 0;
+      marqueeLoopCount++;
+      if (marqueeLoopCount >= MARQUEE_MAX_LOOPS) {
+        marqueeMessages.value = [];
+        marqueeTrackStyle.value = { transform: 'translateX(0)' };
+        return;
+      }
+    }
+    marqueeTrackStyle.value = {
+      transform: `translateX(${currentMarqueeOffset}px)`,
+      whiteSpace: 'nowrap'
+    };
+    marqueeAnimFrame = requestAnimationFrame(animate);
+  }
+
+  marqueeAnimFrame = requestAnimationFrame(animate);
 }
 
 function goToThrow() {
@@ -254,6 +335,56 @@ function goToNotifications() {
 .user-id {
   font-size: 12px;
   opacity: 0.8;
+}
+
+.special-gift-marquee {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: linear-gradient(135deg, #fff9f0 0%, #ffe0ec 50%, #f0e0ff 100%);
+  border-radius: 24px;
+  padding: 8px 16px;
+  margin-top: 12px;
+  box-shadow: 0 2px 12px rgba(255, 107, 157, 0.2);
+  border: 1px solid rgba(255, 107, 157, 0.2);
+  overflow: hidden;
+}
+
+.marquee-icon {
+  font-size: 18px;
+  flex-shrink: 0;
+  animation: marqueeIconSpin 2s linear infinite;
+}
+
+@keyframes marqueeIconSpin {
+  0% { transform: rotate(0deg) scale(1); }
+  50% { transform: rotate(180deg) scale(1.2); }
+  100% { transform: rotate(360deg) scale(1); }
+}
+
+.marquee-content {
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+  height: 22px;
+}
+
+.marquee-track {
+  display: flex;
+  align-items: center;
+  gap: 40px;
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+}
+
+.marquee-item {
+  font-size: 13px;
+  font-weight: 500;
+  color: #c44569;
+  white-space: nowrap;
+  padding-right: 20px;
 }
 
 .main-title {

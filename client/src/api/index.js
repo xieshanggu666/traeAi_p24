@@ -185,6 +185,10 @@ export const sendChatGift = (bottleId, receiverId, giftKey) => {
   return request.post('/shop/send-chat-gift', { bottleId, receiverId, giftKey });
 };
 
+export const getSpecialGiftNotifications = () => {
+  return request.get('/shop/special-gift-notifications');
+};
+
 export const getIntimacy = (bottleId) => {
   return request.get(`/message/intimacy/${bottleId}`);
 };

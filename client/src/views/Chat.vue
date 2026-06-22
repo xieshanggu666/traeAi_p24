@@ -64,12 +64,12 @@
           <div v-if="msg.is_recalled" class="recalled-message recalled-other recalled-center">
             <span class="recalled-text">对方撤回了一条消息</span>
           </div>
-          <div v-else class="message-bubble" :class="{ 'gift-bubble': isGiftMessage(msg), 'image-bubble': isImageMessage(msg) }">
+          <div v-else class="message-bubble" :class="{ 'gift-bubble': isGiftMessage(msg), 'image-bubble': isImageMessage(msg), 'special-effect-bubble': isGiftMessage(msg) && parseGiftContent(msg.content).isSpecialEffect }">
             <template v-if="isGiftMessage(msg)">
-              <div class="gift-message">
-                <div class="gift-label">🎁 赠送了礼物</div>
+              <div class="gift-message" :class="{ 'special-gift-message': parseGiftContent(msg.content).isSpecialEffect }">
+                <div class="gift-label">🎁 赠送了礼物 <van-tag v-if="parseGiftContent(msg.content).isSpecialEffect" type="danger" size="mini" round>特效</van-tag></div>
                 <div class="gift-content">
-                  <span class="gift-icon">{{ parseGiftContent(msg.content).giftIcon }}</span>
+                  <span class="gift-icon" :class="{ 'special-gift-icon-anim': parseGiftContent(msg.content).isSpecialEffect }">{{ parseGiftContent(msg.content).giftIcon }}</span>
                   <div class="gift-info">
                     <div class="gift-name">{{ parseGiftContent(msg.content).giftName }}</div>
                     <div class="gift-charm">魅力值 +{{ parseGiftContent(msg.content).charmValue }}</div>
@@ -102,10 +102,10 @@
               @longpress="handleLongPress(msg)"
             >
               <template v-if="isGiftMessage(msg)">
-                <div class="gift-message">
-                  <div class="gift-label">🎁 赠送了礼物</div>
+                <div class="gift-message" :class="{ 'special-gift-message': parseGiftContent(msg.content).isSpecialEffect }">
+                  <div class="gift-label">🎁 赠送了礼物 <van-tag v-if="parseGiftContent(msg.content).isSpecialEffect" type="danger" size="mini" round>特效</van-tag></div>
                   <div class="gift-content">
-                    <span class="gift-icon">{{ parseGiftContent(msg.content).giftIcon }}</span>
+                    <span class="gift-icon" :class="{ 'special-gift-icon-anim': parseGiftContent(msg.content).isSpecialEffect }">{{ parseGiftContent(msg.content).giftIcon }}</span>
                     <div class="gift-info">
                       <div class="gift-name">{{ parseGiftContent(msg.content).giftName }}</div>
                       <div class="gift-charm">魅力值 +{{ parseGiftContent(msg.content).charmValue }}</div>
@@ -403,6 +403,23 @@
         />
       </div>
     </van-dialog>
+
+    <div class="special-effect-overlay" v-if="showSpecialEffect" @click="closeSpecialEffect">
+      <div class="effect-container">
+        <div class="effect-gift-display">
+          <div class="effect-gift-icon">{{ specialEffectData.giftIcon }}</div>
+          <div class="effect-gift-name">{{ specialEffectData.giftName }}</div>
+        </div>
+        <div class="effect-particles">
+          <span
+            v-for="i in effectParticles"
+            :key="i.id"
+            class="particle"
+            :style="i.style"
+          >{{ i.emoji }}</span>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -456,6 +473,10 @@ const blockedMe = ref(false);
 const isUploadingImage = ref(false);
 const imageFileInput = ref(null);
 const blockingUser = ref(false);
+const showSpecialEffect = ref(false);
+const specialEffectData = ref({ giftIcon: '', giftName: '', effectType: '' });
+const effectParticles = ref([]);
+let specialEffectTimer = null;
 let typingTimer = null;
 let typingSendTimer = null;
 let lastTypingSent = false;
@@ -618,10 +639,22 @@ onUnmounted(() => {
   sendTypingStatus(false);
 });
 
-watch(messages, () => {
+watch(messages, (newMsgs, oldMsgs) => {
   nextTick(() => {
     scrollToBottom();
   });
+  if (oldMsgs && newMsgs.length > oldMsgs.length) {
+    const newMessages = newMsgs.slice(oldMsgs.length);
+    for (const msg of newMessages) {
+      if (msg.sender_id !== currentUserId.value && isGiftMessage(msg)) {
+        const parsed = parseGiftContent(msg.content);
+        if (parsed.isSpecialEffect && parsed.effectType) {
+          triggerSpecialEffect(parsed.giftIcon, parsed.giftName, parsed.effectType);
+          break;
+        }
+      }
+    }
+  }
 }, { deep: true });
 
 async function initChat() {
@@ -963,21 +996,23 @@ function parseGiftContent(content) {
         return {
           giftName: parsed.giftName || '未知礼物',
           giftIcon: parsed.giftIcon || '🎁',
-          charmValue: parsed.charmValue || 0
+          charmValue: parsed.charmValue || 0,
+          isSpecialEffect: parsed.isSpecialEffect || false,
+          effectType: parsed.effectType || null
         };
       }
     } catch {
       // ignore
     }
   }
-  return { giftName: '未知礼物', giftIcon: '🎁', charmValue: 0 };
+  return { giftName: '未知礼物', giftIcon: '🎁', charmValue: 0, isSpecialEffect: false, effectType: null };
 }
 
 async function fetchGiftItems() {
   giftLoading.value = true;
   try {
     const items = await getBackpackItems();
-    giftItems.value = items.filter(item => item.category === 'gift');
+    giftItems.value = items.filter(item => item.category === 'gift' || item.category === 'special_gift');
   } catch (error) {
     console.error('获取礼物列表失败:', error);
   } finally {
@@ -1009,6 +1044,10 @@ async function handleSendGift() {
     }
 
     intimacyValue.value += selectedGift.value.charmValue * 2;
+
+    if (result.isSpecialEffect && result.effectType) {
+      triggerSpecialEffect(result.giftIcon || selectedGift.value.icon, result.giftName || selectedGift.value.name, result.effectType);
+    }
     
     showToast(result._message || '赠送成功');
     showGiftPanel.value = false;
@@ -1024,6 +1063,70 @@ async function handleSendGift() {
 function goToShop() {
   showGiftPanel.value = false;
   router.push('/shop');
+}
+
+const EFFECT_EMOJIS = {
+  galaxy: ['✨', '⭐', '🌟', '💫', '🌠'],
+  firework: ['🎆', '🎇', '💥', '✨', '🌟'],
+  rose_rain: ['🌹', '🌸', '💐', '❤️', '💕'],
+  meteor: ['☄️', '💫', '⭐', '✨', '🌠'],
+  bubble: ['🫧', '💫', '✨', '🫧', '💧']
+};
+
+function triggerSpecialEffect(giftIcon, giftName, effectType) {
+  specialEffectData.value = { giftIcon, giftName, effectType };
+  showSpecialEffect.value = true;
+  generateParticles(effectType);
+  if (specialEffectTimer) clearTimeout(specialEffectTimer);
+  specialEffectTimer = setTimeout(() => {
+    closeSpecialEffect();
+  }, 5000);
+}
+
+function generateParticles(effectType) {
+  const emojis = EFFECT_EMOJIS[effectType] || EFFECT_EMOJIS.galaxy;
+  const particles = [];
+  for (let i = 0; i < 40; i++) {
+    const emoji = emojis[Math.floor(Math.random() * emojis.length)];
+    const x = Math.random() * 100;
+    const startY = effectType === 'rose_rain' ? -10 : Math.random() * 50;
+    const endY = effectType === 'rose_rain' ? 110 : (effectType === 'meteor' ? 110 : -20);
+    const size = 16 + Math.random() * 28;
+    const duration = 2 + Math.random() * 3;
+    const delay = Math.random() * 2;
+    const leftDrift = -30 + Math.random() * 60;
+    const rotation = Math.random() * 360;
+
+    let animName = 'particleFall';
+    if (effectType === 'galaxy') animName = 'particleTwinkle';
+    if (effectType === 'meteor') animName = 'particleShoot';
+    if (effectType === 'bubble') animName = 'particleFloat';
+    if (effectType === 'firework') animName = 'particleBurst';
+
+    particles.push({
+      id: i,
+      emoji,
+      style: {
+        left: x + '%',
+        top: startY + '%',
+        fontSize: size + 'px',
+        animation: `${animName} ${duration}s ease-in-out ${delay}s infinite`,
+        '--leftDrift': leftDrift + 'px',
+        '--endY': endY + '%',
+        '--rotation': rotation + 'deg'
+      }
+    });
+  }
+  effectParticles.value = particles;
+}
+
+function closeSpecialEffect() {
+  showSpecialEffect.value = false;
+  effectParticles.value = [];
+  if (specialEffectTimer) {
+    clearTimeout(specialEffectTimer);
+    specialEffectTimer = null;
+  }
 }
 
 function useQuickReply(msg) {
@@ -2162,5 +2265,137 @@ function previewImage(src) {
 
 .add-friend-footer-btn {
   margin-top: 0 !important;
+}
+
+.special-effect-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 9999;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: overlayFadeIn 0.3s ease-out;
+}
+
+@keyframes overlayFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.effect-container {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+.effect-gift-display {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  z-index: 10;
+  animation: giftDisplayPop 0.5s ease-out;
+}
+
+@keyframes giftDisplayPop {
+  0% { transform: translate(-50%, -50%) scale(0); opacity: 0; }
+  60% { transform: translate(-50%, -50%) scale(1.3); opacity: 1; }
+  100% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+}
+
+.effect-gift-icon {
+  font-size: 100px;
+  animation: giftIconPulse 1.5s ease-in-out infinite;
+  filter: drop-shadow(0 0 20px rgba(255, 107, 157, 0.8));
+}
+
+@keyframes giftIconPulse {
+  0%, 100% { transform: scale(1); filter: drop-shadow(0 0 20px rgba(255, 107, 157, 0.8)); }
+  50% { transform: scale(1.2); filter: drop-shadow(0 0 40px rgba(255, 107, 157, 1)); }
+}
+
+.effect-gift-name {
+  color: #fff;
+  font-size: 24px;
+  font-weight: bold;
+  margin-top: 16px;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+  animation: giftNameGlow 1.5s ease-in-out infinite alternate;
+}
+
+@keyframes giftNameGlow {
+  from { text-shadow: 0 2px 8px rgba(255, 107, 157, 0.5); }
+  to { text-shadow: 0 2px 20px rgba(255, 107, 157, 1), 0 0 40px rgba(255, 215, 0, 0.5); }
+}
+
+.effect-particles {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.particle {
+  position: absolute;
+  pointer-events: none;
+  will-change: transform, opacity;
+}
+
+@keyframes particleFall {
+  0% { transform: translateY(0) translateX(0) rotate(0deg); opacity: 1; }
+  100% { transform: translateY(calc(100vh)) translateX(var(--leftDrift)) rotate(var(--rotation)); opacity: 0; }
+}
+
+@keyframes particleTwinkle {
+  0%, 100% { transform: translateY(0) scale(0.5); opacity: 0.3; }
+  50% { transform: translateY(-20px) scale(1.5); opacity: 1; }
+}
+
+@keyframes particleShoot {
+  0% { transform: translateY(0) translateX(0) scale(1); opacity: 1; }
+  100% { transform: translateY(calc(80vh)) translateX(var(--leftDrift)) scale(0.3); opacity: 0; }
+}
+
+@keyframes particleFloat {
+  0% { transform: translateY(0) scale(0.8); opacity: 0.8; }
+  50% { transform: translateY(-30px) scale(1.2); opacity: 1; }
+  100% { transform: translateY(-60px) scale(0.5); opacity: 0; }
+}
+
+@keyframes particleBurst {
+  0% { transform: translate(0, 0) scale(0); opacity: 1; }
+  50% { opacity: 1; }
+  100% { transform: translate(var(--leftDrift), calc(var(--endY) - 50%)) scale(1); opacity: 0; }
+}
+
+.special-gift-message {
+  background: linear-gradient(135deg, #fff9f0 0%, #ffe0ec 50%, #f0e0ff 100%) !important;
+  border: 1px solid #ff6b9d50;
+}
+
+.is-mine .special-gift-message {
+  background: linear-gradient(135deg, #667eea20 0%, #764ba220 50%, #ff6b9d15 100%) !important;
+  border: 1px solid #667eea40;
+}
+
+.special-effect-bubble {
+  box-shadow: 0 0 12px rgba(255, 107, 157, 0.3);
+}
+
+.special-gift-icon-anim {
+  animation: specialGiftIconBounce 1s ease-in-out infinite;
+}
+
+@keyframes specialGiftIconBounce {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.15); }
 }
 </style>

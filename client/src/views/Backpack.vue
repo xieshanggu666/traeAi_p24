@@ -21,7 +21,7 @@
             <div class="item-quantity">拥有: <span class="quantity-num">{{ item.quantity }}</span></div>
           </div>
           <van-button
-            v-if="item.category === 'gift'"
+            v-if="item.category === 'gift' || item.category === 'special_gift'"
             size="small"
             round
             type="warning"

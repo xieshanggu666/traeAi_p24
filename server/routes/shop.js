@@ -182,6 +182,66 @@ const PRODUCTS = [
     icon: '🚀',
     category: 'gift',
     charmValue: 1000
+  },
+  {
+    key: 'special_galaxy',
+    name: '星河璀璨',
+    description: '赠送时全屏星光特效，对方魅力值+888',
+    price: 88,
+    dailyLimit: 0,
+    icon: '🌟',
+    category: 'special_gift',
+    charmValue: 888,
+    isSpecialEffect: true,
+    effectType: 'galaxy'
+  },
+  {
+    key: 'special_firework',
+    name: '烟花盛宴',
+    description: '赠送时全屏烟花特效，对方魅力值+888',
+    price: 88,
+    dailyLimit: 0,
+    icon: '🎆',
+    category: 'special_gift',
+    charmValue: 888,
+    isSpecialEffect: true,
+    effectType: 'firework'
+  },
+  {
+    key: 'special_rose_rain',
+    name: '玫瑰雨',
+    description: '赠送时全屏玫瑰雨特效，对方魅力值+888',
+    price: 88,
+    dailyLimit: 0,
+    icon: '🌹',
+    category: 'special_gift',
+    charmValue: 888,
+    isSpecialEffect: true,
+    effectType: 'rose_rain'
+  },
+  {
+    key: 'special_meteor',
+    name: '流星雨',
+    description: '赠送时全屏流星雨特效，对方魅力值+888',
+    price: 88,
+    dailyLimit: 0,
+    icon: '💫',
+    category: 'special_gift',
+    charmValue: 888,
+    isSpecialEffect: true,
+    effectType: 'meteor'
+  },
+  {
+    key: 'special_bubble',
+    name: '梦幻泡泡',
+    description: '赠送时全屏泡泡特效，对方魅力值+888',
+    price: 88,
+    dailyLimit: 0,
+    icon: '🫧',
+    category: 'special_gift',
+    charmValue: 888,
+    isSpecialEffect: true,
+    effectType: 'bubble'
   }
 ];
 
@@ -241,7 +301,8 @@ router.get('/products', async (req, res) => {
 
     const categories = [
       { key: 'function', name: '功能道具', icon: '🎯' },
-      { key: 'gift', name: '礼物', icon: '🎁' }
+      { key: 'gift', name: '礼物', icon: '🎁' },
+      { key: 'special_gift', name: '特效礼物', icon: '✨' }
     ];
 
     res.json(generateResponse(true, { products, categories }, '获取成功'));
@@ -442,7 +503,7 @@ router.post('/send-gift', async (req, res) => {
       return res.status(400).json(generateResponse(false, null, '不能送给自己'));
     }
 
-    const gift = PRODUCTS.find(p => p.key === giftKey && p.category === 'gift');
+    const gift = PRODUCTS.find(p => p.key === giftKey && (p.category === 'gift' || p.category === 'special_gift'));
     if (!gift) {
       await connection.rollback();
       return res.status(400).json(generateResponse(false, null, '无效的礼物'));
@@ -482,12 +543,28 @@ router.post('/send-gift', async (req, res) => {
       VALUES (?, ?, ?, ?, ?, ?, ?)
     `, [giftRecordId, userId, receiverId, gift.key, gift.name, gift.icon, gift.charmValue]);
 
+    if (gift.isSpecialEffect) {
+      const [senders] = await connection.execute(
+        'SELECT nickname FROM users WHERE id = ?',
+        [userId]
+      );
+      const senderNickname = senders.length > 0 ? senders[0].nickname : '匿名用户';
+      const notifId = generateUUID();
+      await connection.execute(`
+        INSERT INTO special_gift_notifications (id, sender_id, sender_nickname, receiver_id, receiver_nickname, gift_key, gift_name, gift_icon, effect_type)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `, [notifId, userId, senderNickname, receiverId, receivers[0].nickname, gift.key, gift.name, gift.icon, gift.effectType]);
+    }
+
     await connection.commit();
 
     res.json(generateResponse(true, {
       giftName: gift.name,
       receiverName: receivers[0].nickname,
-      charmValue: gift.charmValue
+      charmValue: gift.charmValue,
+      isSpecialEffect: gift.isSpecialEffect || false,
+      effectType: gift.effectType || null,
+      giftIcon: gift.icon
     }, `成功赠送${gift.name}给${receivers[0].nickname}`));
   } catch (error) {
     await connection.rollback();
@@ -709,7 +786,7 @@ router.post('/send-chat-gift', async (req, res) => {
       return res.status(403).json(generateResponse(false, null, '您已拉黑对方，无法赠送礼物'));
     }
 
-    const gift = PRODUCTS.find(p => p.key === giftKey && p.category === 'gift');
+    const gift = PRODUCTS.find(p => p.key === giftKey && (p.category === 'gift' || p.category === 'special_gift'));
     if (!gift) {
       await connection.rollback();
       return res.status(400).json(generateResponse(false, null, '无效的礼物'));
@@ -757,7 +834,9 @@ router.post('/send-chat-gift', async (req, res) => {
       giftKey: gift.key,
       giftName: gift.name,
       giftIcon: gift.icon,
-      charmValue: gift.charmValue
+      charmValue: gift.charmValue,
+      isSpecialEffect: gift.isSpecialEffect || false,
+      effectType: gift.effectType || null
     });
 
     const typeCol = await checkMsgTypeColumn();
@@ -803,11 +882,31 @@ router.post('/send-chat-gift', async (req, res) => {
       await addIntimacy(bottleId, gift.charmValue * 2);
     }
 
+    if (gift.isSpecialEffect && !blockedByReceiver) {
+      try {
+        const [senders] = await pool.execute(
+          'SELECT nickname FROM users WHERE id = ?',
+          [userId]
+        );
+        const senderNickname = senders.length > 0 ? senders[0].nickname : '匿名用户';
+        const notifId = generateUUID();
+        await pool.execute(`
+          INSERT INTO special_gift_notifications (id, sender_id, sender_nickname, receiver_id, receiver_nickname, gift_key, gift_name, gift_icon, effect_type)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `, [notifId, userId, senderNickname, receiverId, receivers[0].nickname, gift.key, gift.name, gift.icon, gift.effectType]);
+      } catch (notifError) {
+        console.error('记录特效礼物通知失败:', notifError.message);
+      }
+    }
+
     res.json(generateResponse(true, {
       message: message[0],
       giftName: gift.name,
       receiverName: receivers[0].nickname,
-      charmValue: blockedByReceiver ? 0 : gift.charmValue
+      charmValue: blockedByReceiver ? 0 : gift.charmValue,
+      isSpecialEffect: gift.isSpecialEffect || false,
+      effectType: gift.effectType || null,
+      giftIcon: gift.icon
     }, blockedByReceiver ? '对方已拒收您的礼物' : `成功赠送${gift.name}给${receivers[0].nickname}`));
   } catch (error) {
     await connection.rollback();
@@ -1615,6 +1714,22 @@ async function getUserActiveChatSkin(userId, conn) {
     return null;
   }
 }
+
+router.get('/special-gift-notifications', async (req, res) => {
+  try {
+    const [notifications] = await pool.execute(`
+      SELECT id, sender_nickname, receiver_nickname, gift_key, gift_name, gift_icon, effect_type, created_at
+      FROM special_gift_notifications
+      WHERE created_at > DATE_SUB(NOW(), INTERVAL 10 MINUTE)
+      ORDER BY created_at DESC
+      LIMIT 20
+    `);
+    res.json(generateResponse(true, { notifications }, '获取成功'));
+  } catch (error) {
+    console.error('获取特效礼物通知失败:', error);
+    res.status(500).json(generateResponse(false, null, '获取特效礼物通知失败'));
+  }
+});
 
 module.exports = router;
 module.exports.getUserActiveSkin = getUserActiveSkin;
