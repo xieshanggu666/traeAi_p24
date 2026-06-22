@@ -12,7 +12,9 @@ const {
   getUserTitles, 
   getEquippedTitle, 
   checkAchievementTitles,
-  hasTitle
+  hasTitle,
+  checkAndGrantRankTitle,
+  checkAndGrantAllRankTitles
 } = require('../utils/titleManager');
 const { migrateTitles: initTitles } = require('../config/migrateTitles');
 
@@ -327,5 +329,149 @@ describe('通知系统 API 测试', () => {
     expect(res.body.success).toBe(true);
     expect(res.body.data).toHaveProperty('count');
     expect(typeof res.body.data.count).toBe('number');
+  });
+});
+
+describe('排行榜称号实时授予测试', () => {
+  let rankTestUserId1 = null;
+  let rankTestUserId2 = null;
+
+  beforeAll(async () => {
+    rankTestUserId1 = generateUUID();
+    rankTestUserId2 = generateUUID();
+    await pool.execute(
+      `INSERT INTO users (id, username, password, nickname, coins, charm) 
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [rankTestUserId1, `rank_test1_${Date.now()}`, 'test', '排行榜测试用户1', 0, 0]
+    );
+    await pool.execute(
+      `INSERT INTO users (id, username, password, nickname, coins, charm) 
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [rankTestUserId2, `rank_test2_${Date.now()}`, 'test', '排行榜测试用户2', 0, 0]
+    );
+  });
+
+  afterAll(async () => {
+    if (rankTestUserId1) {
+      await pool.execute('DELETE FROM user_titles WHERE user_id = ?', [rankTestUserId1]);
+      await pool.execute('DELETE FROM notifications WHERE user_id = ?', [rankTestUserId1]);
+      await pool.execute('DELETE FROM users WHERE id = ?', [rankTestUserId1]);
+    }
+    if (rankTestUserId2) {
+      await pool.execute('DELETE FROM user_titles WHERE user_id = ?', [rankTestUserId2]);
+      await pool.execute('DELETE FROM notifications WHERE user_id = ?', [rankTestUserId2]);
+      await pool.execute('DELETE FROM users WHERE id = ?', [rankTestUserId2]);
+    }
+  });
+
+  test('checkAndGrantRankTitle - 无效的排行榜类型应返回 null', async () => {
+    const result = await checkAndGrantRankTitle(rankTestUserId1, 'invalid_type');
+    expect(result).toBeNull();
+  });
+
+  test('checkAndGrantRankTitle - 用户金币为0时不应获得土豪称号', async () => {
+    const result = await checkAndGrantRankTitle(rankTestUserId1, 'wealth');
+    expect(result).toBeNull();
+    const hasTycoon = await hasTitle(rankTestUserId1, 'tycoon');
+    expect(hasTycoon).toBe(false);
+  });
+
+  test('checkAndGrantRankTitle - 用户魅力值为0时不应获得万人迷称号', async () => {
+    const result = await checkAndGrantRankTitle(rankTestUserId1, 'charm');
+    expect(result).toBeNull();
+    const hasHeartthrob = await hasTitle(rankTestUserId1, 'heartthrob');
+    expect(hasHeartthrob).toBe(false);
+  });
+
+  test('checkAndGrantRankTitle - 用户成为财富榜第一时获得土豪称号', async () => {
+    await pool.execute('UPDATE users SET coins = 999999 WHERE id = ?', [rankTestUserId1]);
+    
+    const result = await checkAndGrantRankTitle(rankTestUserId1, 'wealth');
+    expect(result).not.toBeNull();
+    expect(result).toHaveProperty('title');
+    expect(result.title).toHaveProperty('id', 'tycoon');
+    expect(result.title).toHaveProperty('name', '土豪');
+    
+    const hasTycoon = await hasTitle(rankTestUserId1, 'tycoon');
+    expect(hasTycoon).toBe(true);
+  });
+
+  test('checkAndGrantRankTitle - 用户成为魅力榜第一时获得万人迷称号', async () => {
+    await pool.execute('UPDATE users SET charm = 999999 WHERE id = ?', [rankTestUserId1]);
+    
+    const result = await checkAndGrantRankTitle(rankTestUserId1, 'charm');
+    expect(result).not.toBeNull();
+    expect(result).toHaveProperty('title');
+    expect(result.title).toHaveProperty('id', 'heartthrob');
+    expect(result.title).toHaveProperty('name', '万人迷');
+    
+    const hasHeartthrob = await hasTitle(rankTestUserId1, 'heartthrob');
+    expect(hasHeartthrob).toBe(true);
+  });
+
+  test('土豪称号有效期应为24小时', async () => {
+    const userTitles = await getUserTitles(rankTestUserId1);
+    const tycoonTitle = userTitles.find(t => t.title_id === 'tycoon');
+    expect(tycoonTitle).not.toBeUndefined();
+    expect(tycoonTitle.validity_type).toBe('duration');
+    expect(tycoonTitle.validity_value).toBe(24);
+    expect(tycoonTitle.validity_unit).toBe('hour');
+    expect(tycoonTitle.expires_at).not.toBeNull();
+    
+    if (tycoonTitle.expires_at) {
+      const expiresAt = new Date(tycoonTitle.expires_at);
+      const now = new Date();
+      const diffHours = (expiresAt - now) / (1000 * 60 * 60);
+      expect(diffHours).toBeGreaterThan(23);
+      expect(diffHours).toBeLessThan(25);
+    }
+  });
+
+  test('万人迷称号有效期应为24小时', async () => {
+    const userTitles = await getUserTitles(rankTestUserId1);
+    const heartthrobTitle = userTitles.find(t => t.title_id === 'heartthrob');
+    expect(heartthrobTitle).not.toBeUndefined();
+    expect(heartthrobTitle.validity_type).toBe('duration');
+    expect(heartthrobTitle.validity_value).toBe(24);
+    expect(heartthrobTitle.validity_unit).toBe('hour');
+    expect(heartthrobTitle.expires_at).not.toBeNull();
+    
+    if (heartthrobTitle.expires_at) {
+      const expiresAt = new Date(heartthrobTitle.expires_at);
+      const now = new Date();
+      const diffHours = (expiresAt - now) / (1000 * 60 * 60);
+      expect(diffHours).toBeGreaterThan(23);
+      expect(diffHours).toBeLessThan(25);
+    }
+  });
+
+  test('checkAndGrantAllRankTitles - 同时检查两个排行榜', async () => {
+    await pool.execute('DELETE FROM user_titles WHERE user_id = ?', [rankTestUserId1]);
+    await pool.execute('UPDATE users SET coins = 888888, charm = 777777 WHERE id = ?', [rankTestUserId1]);
+    
+    const results = await checkAndGrantAllRankTitles(rankTestUserId1);
+    expect(results).toHaveProperty('wealth');
+    expect(results).toHaveProperty('charm');
+    expect(results.wealth).not.toBeNull();
+    expect(results.charm).not.toBeNull();
+    
+    const hasTycoon = await hasTitle(rankTestUserId1, 'tycoon');
+    const hasHeartthrob = await hasTitle(rankTestUserId1, 'heartthrob');
+    expect(hasTycoon).toBe(true);
+    expect(hasHeartthrob).toBe(true);
+  });
+
+  test('非第一名用户不应获得排行榜称号', async () => {
+    await pool.execute('DELETE FROM user_titles WHERE user_id = ?', [rankTestUserId2]);
+    await pool.execute('UPDATE users SET coins = 100, charm = 100 WHERE id = ?', [rankTestUserId2]);
+    
+    const results = await checkAndGrantAllRankTitles(rankTestUserId2);
+    expect(results.wealth).toBeNull();
+    expect(results.charm).toBeNull();
+    
+    const hasTycoon = await hasTitle(rankTestUserId2, 'tycoon');
+    const hasHeartthrob = await hasTitle(rankTestUserId2, 'heartthrob');
+    expect(hasTycoon).toBe(false);
+    expect(hasHeartthrob).toBe(false);
   });
 });

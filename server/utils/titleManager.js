@@ -517,6 +517,65 @@ async function grantRankTitles() {
   return results;
 }
 
+async function checkAndGrantRankTitle(userId, rankType) {
+  if (rankType !== 'wealth' && rankType !== 'charm') {
+    return null;
+  }
+
+  const field = rankType === 'wealth' ? 'coins' : 'charm';
+  const titleId = rankType === 'wealth' ? 'tycoon' : 'heartthrob';
+  const source = rankType === 'wealth' ? 'wealth_rank_1' : 'charm_rank_1';
+
+  const [userRows] = await pool.execute(
+    `SELECT ${field} FROM users WHERE id = ?`,
+    [userId]
+  );
+
+  if (userRows.length === 0 || Number(userRows[0][field]) <= 0) {
+    return null;
+  }
+
+  const userValue = Number(userRows[0][field]);
+
+  const [topRows] = await pool.execute(
+    `SELECT id, ${field} FROM users WHERE ${field} > 0 ORDER BY ${field} DESC LIMIT 1`
+  );
+
+  if (topRows.length === 0) {
+    return null;
+  }
+
+  const topUser = topRows[0];
+  const topValue = Number(topUser[field]);
+
+  if (topUser.id === userId && userValue >= topValue) {
+    const result = await grantTitle(userId, titleId, source);
+    return result;
+  }
+
+  return null;
+}
+
+async function checkAndGrantAllRankTitles(userId) {
+  const results = {};
+
+  try {
+    results.wealth = await checkAndGrantRankTitle(userId, 'wealth');
+  } catch (error) {
+    console.error('检查财富榜称号失败:', error);
+    results.wealth = null;
+  }
+
+  try {
+    results.charm = await checkAndGrantRankTitle(userId, 'charm');
+  } catch (error) {
+    console.error('检查魅力榜称号失败:', error);
+    results.charm = null;
+  }
+
+  return results;
+}
+
 async function getTitleProgress(userId, titleId) {
   const title = await getTitleById(titleId);
   if (!title) {
@@ -652,6 +711,8 @@ module.exports = {
   checkTotalBottlesPicked,
   checkAllOnceTasks,
   grantRankTitles,
+  checkAndGrantRankTitle,
+  checkAndGrantAllRankTitles,
   calculateExpiresAt,
   getTitleProgress
 };

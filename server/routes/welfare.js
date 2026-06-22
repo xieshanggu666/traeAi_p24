@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const pool = require('../config/db');
 const { generateUUID, generateResponse } = require('../utils/helper');
-const { checkAchievementTitles } = require('../utils/titleManager');
+const { checkAchievementTitles, checkAndGrantRankTitle } = require('../utils/titleManager');
 
 const ONCE_TASKS = [
   { key: 'profile_complete', name: '完成个人信息填写', reward: 50, type: 'once' },
@@ -89,6 +89,14 @@ async function addCoins(userId, amount, type, source) {
     'INSERT INTO coin_records (id, user_id, amount, type, source) VALUES (?, ?, ?, ?, ?)',
     [recordId, userId, amount, type, source]
   );
+
+  if (amount > 0) {
+    try {
+      await checkAndGrantRankTitle(userId, 'wealth');
+    } catch (error) {
+      console.error('检查财富榜称号失败:', error);
+    }
+  }
 }
 
 function getMonthRange(year, month) {
@@ -300,6 +308,12 @@ router.post('/claim-gift', async (req, res) => {
     }
 
     await connection.commit();
+
+    try {
+      await checkAndGrantRankTitle(userId, 'wealth');
+    } catch (error) {
+      console.error('检查财富榜称号失败:', error);
+    }
 
     res.json(generateResponse(true, { 
       amount, 

@@ -6,6 +6,7 @@ const { SKIN_PRICES, DURATION_HOURS } = require('../config/migrateSkins');
 const migrateAvatarAndChatSkins = require('../config/migrateAvatarAndChatSkins');
 const AVATAR_FRAME_PRICE = migrateAvatarAndChatSkins.PRICE;
 const { isBlockedBy, hasBlocked } = require('./user');
+const { checkAndGrantRankTitle } = require('../utils/titleManager');
 
 let hasMsgTypeColumn = null;
 let hasUserIntimacyTable = null;
@@ -260,6 +261,14 @@ async function addCoins(userId, amount, type, source) {
     'INSERT INTO coin_records (id, user_id, amount, type, source) VALUES (?, ?, ?, ?, ?)',
     [recordId, userId, amount, type, source]
   );
+
+  if (amount > 0) {
+    try {
+      await checkAndGrantRankTitle(userId, 'wealth');
+    } catch (error) {
+      console.error('检查财富榜称号失败:', error);
+    }
+  }
 }
 
 async function ensureUserItem(userId, itemKey) {
@@ -557,6 +566,12 @@ router.post('/send-gift', async (req, res) => {
     }
 
     await connection.commit();
+
+    try {
+      await checkAndGrantRankTitle(receiverId, 'charm');
+    } catch (error) {
+      console.error('检查魅力榜称号失败:', error);
+    }
 
     res.json(generateResponse(true, {
       giftName: gift.name,
@@ -880,6 +895,11 @@ router.post('/send-chat-gift', async (req, res) => {
 
     if (!blockedByReceiver) {
       await addIntimacy(bottleId, gift.charmValue * 2);
+      try {
+        await checkAndGrantRankTitle(receiverId, 'charm');
+      } catch (error) {
+        console.error('检查魅力榜称号失败:', error);
+      }
     }
 
     if (gift.isSpecialEffect && !blockedByReceiver) {

@@ -8,7 +8,7 @@ const { OPERATION_TYPES, logOperation } = require('../utils/bottleLogger');
 const { BOTTLE_EXPIRE_DAYS, MAX_PICK_COUNT } = require('../utils/bottleScheduler');
 const { getUserActiveSkin, getSkinById } = require('./shop');
 const { hasBlocked, isBlockedBy } = require('./user');
-const { checkAchievementTitles } = require('../utils/titleManager');
+const { checkAchievementTitles, checkAndGrantRankTitle } = require('../utils/titleManager');
 
 const DAILY_LIMIT = 20;
 const RECALL_TIME_LIMIT_MINUTES = 5;
@@ -78,6 +78,14 @@ async function addCoins(userId, amount, type, source, conn) {
     'INSERT INTO coin_records (id, user_id, amount, type, source) VALUES (?, ?, ?, ?, ?)',
     [recordId, userId, amount, type, source]
   );
+
+  if (amount > 0) {
+    try {
+      await checkAndGrantRankTitle(userId, 'wealth');
+    } catch (error) {
+      console.error('检查财富榜称号失败:', error);
+    }
+  }
 }
 
 router.get('/daily-limits', async (req, res) => {
